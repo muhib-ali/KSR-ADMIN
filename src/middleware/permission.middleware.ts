@@ -32,19 +32,24 @@ export class PermissionMiddleware implements NestMiddleware {
 
   async use(req: Request, res: Response, next: NextFunction) {
     try {
+      if (req.method === "OPTIONS") {
+        return next();
+      }
+
       // Get the full path for route parsing
       const fullPath = req.originalUrl || req.baseUrl + req.path;
       const url = new URL(fullPath, `http://${req.get("host")}`);
       const pathname = url.pathname;
 
+      // Skip excluded routes (auth, health, API docs)
+      if (this.isExcludedRoute(pathname)) {
+        return next();
+      }
+
       // Extract and validate token
       const token = this.extractTokenFromHeader(req);
       if (!token) {
         throw new UnauthorizedException("Authentication token required");
-      }
-      // Skip excluded routes (auth, health, API docs)
-      if (this.isExcludedRoute(pathname)) {
-        return next();
       }
 
       // Verify JWT token
