@@ -16,6 +16,9 @@ import { UsersModule } from "./users/users.module";
 import { DropdownsModule } from "./dropdowns/dropdowns.module";
 import { HealthModule } from "./health/health.module";
 import { SharedModule } from "./shared/shared.module";
+import { CategoriesModule } from "./categories/categories.module";
+import { BrandsModule } from "./brands/brands.module";
+import { ProductsModule } from "./products/products.module";
 import { PermissionMiddleware } from "./middleware/permission.middleware";
 import { GlobalExceptionFilter } from "./filters/global-exception.filter";
 import { ThrottlerGuard } from "@nestjs/throttler";
@@ -104,6 +107,9 @@ import { OauthToken } from "./entities/oauth-token.entity";
     PermissionsModule,
     UsersModule,
     DropdownsModule,
+    CategoriesModule,
+    BrandsModule,
+    ProductsModule,
     HealthModule,
   ],
   providers: [

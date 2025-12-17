@@ -52,6 +52,24 @@ export class AddIndexes1757551166067 implements MigrationInterface {
       `CREATE INDEX IF NOT EXISTS "IDX_roles_slug" ON "roles" ("slug")`
     );
 
+    await queryRunner.query(
+      `CREATE INDEX IF NOT EXISTS "IDX_categories_name" ON "categories" ("name")`
+    );
+
+    await queryRunner.query(
+      `CREATE INDEX IF NOT EXISTS "IDX_brands_name" ON "brands" ("name")`
+    );
+
+    await queryRunner.query(
+      `CREATE INDEX IF NOT EXISTS "IDX_products_sku" ON "products" ("sku")`
+    );
+    await queryRunner.query(
+      `CREATE INDEX IF NOT EXISTS "IDX_products_category_id" ON "products" ("category_id")`
+    );
+    await queryRunner.query(
+      `CREATE INDEX IF NOT EXISTS "IDX_products_brand_id" ON "products" ("brand_id")`
+    );
+
     // Composite index for role_permissions with module_slug for faster filtering
     await queryRunner.query(
       `CREATE INDEX IF NOT EXISTS "IDX_role_permissions_role_module" ON "role_permissions" ("role_id", "module_slug")`
@@ -78,5 +96,13 @@ export class AddIndexes1757551166067 implements MigrationInterface {
     await queryRunner.query(
       `DROP INDEX IF EXISTS "IDX_role_permissions_role_id"`
     );
+
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_categories_name"`);
+
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_brands_name"`);
+
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_products_brand_id"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_products_category_id"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_products_sku"`);
   }
 }

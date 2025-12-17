@@ -81,6 +81,57 @@ export class Init1700000000000 implements MigrationInterface {
         `);
 
     await queryRunner.query(`
+            CREATE TABLE "categories" (
+                "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                "is_active" boolean NOT NULL DEFAULT true,
+                "created_by" character varying,
+                "updated_by" character varying,
+                "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                "name" character varying NOT NULL,
+                "description" character varying,
+                CONSTRAINT "UQ_categories_name" UNIQUE ("name")
+            )
+        `);
+
+    await queryRunner.query(`
+            CREATE TABLE "brands" (
+                "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                "is_active" boolean NOT NULL DEFAULT true,
+                "created_by" character varying,
+                "updated_by" character varying,
+                "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                "name" character varying NOT NULL,
+                "description" character varying,
+                CONSTRAINT "UQ_brands_name" UNIQUE ("name")
+            )
+        `);
+
+    await queryRunner.query(`
+            CREATE TABLE "products" (
+                "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                "is_active" boolean NOT NULL DEFAULT true,
+                "created_by" character varying,
+                "updated_by" character varying,
+                "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                "title" character varying NOT NULL,
+                "description" character varying,
+                "price" numeric NOT NULL,
+                "stock_quantity" integer NOT NULL,
+                "category_id" uuid NOT NULL,
+                "brand_id" uuid NOT NULL,
+                "currency" character varying NOT NULL,
+                "product_img_url" character varying,
+                "sku" character varying NOT NULL,
+                CONSTRAINT "UQ_products_sku" UNIQUE ("sku"),
+                CONSTRAINT "FK_products_category_id" FOREIGN KEY ("category_id") REFERENCES "categories"("id") ON DELETE NO ACTION ON UPDATE NO ACTION,
+                CONSTRAINT "FK_products_brand_id" FOREIGN KEY ("brand_id") REFERENCES "brands"("id") ON DELETE NO ACTION ON UPDATE NO ACTION
+            )
+        `);
+
+    await queryRunner.query(`
             CREATE TABLE "tenants" (
                 "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                 "is_active" boolean NOT NULL DEFAULT true,
@@ -210,6 +261,9 @@ export class Init1700000000000 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE IF EXISTS "permissions"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "tenant_allowed_locations"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "tenants"`);
+    await queryRunner.query(`DROP TABLE IF EXISTS "products"`);
+    await queryRunner.query(`DROP TABLE IF EXISTS "brands"`);
+    await queryRunner.query(`DROP TABLE IF EXISTS "categories"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "modules"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "roles"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "cities"`);

@@ -121,6 +121,24 @@ async function seed() {
         description: "Manage dropdowns",
         is_active: true,
       },
+      {
+        title: "Categories",
+        slug: "categories",
+        description: "Manage categories",
+        is_active: true,
+      },
+      {
+        title: "Brands",
+        slug: "brands",
+        description: "Manage brands",
+        is_active: true,
+      },
+      {
+        title: "Products",
+        slug: "products",
+        description: "Manage products",
+        is_active: true,
+      },
     ];
 
     for (const moduleData of modulesData) {
