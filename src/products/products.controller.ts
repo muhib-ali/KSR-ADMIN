@@ -44,15 +44,86 @@ type UploadedImageFile = {
   size: number;
 };
 
+type UploadedExcelFile = {
+  buffer: Buffer;
+  mimetype: string;
+  originalname: string;
+  size: number;
+};
+
 @ApiTags("Products")
 @ApiBearerAuth("JWT-auth")
 @Controller("products")
 export class ProductsController {
   constructor(private productsService: ProductsService) {}
 
+  @Post("bulk-upload")
+  @ApiOperation({ summary: "Bulk upload products via Excel (.xlsx/.xls)" })
+  @ApiConsumes("multipart/form-data")
+  @ApiResponse({
+    status: 200,
+    description: "Bulk upload processed",
+    schema: {
+      example: {
+        statusCode: 200,
+        status: true,
+        message: "Bulk upload processed",
+        heading: "Product",
+        data: {
+          totalRows: 50,
+          processedRows: 50,
+          createdCount: 45,
+          failedCount: 5,
+          failures: [
+            {
+              rowNumber: 7,
+              reason: "Category title is required",
+            },
+          ],
+        },
+      },
+    },
+  })
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["file"],
+      properties: {
+        file: { type: "string", format: "binary" },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: (req, file, cb) => {
+        const allowedMimes = [
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "application/vnd.ms-excel",
+        ];
+
+        const name = (file.originalname || "").toLowerCase();
+        const okByExt = name.endsWith(".xlsx") || name.endsWith(".xls");
+        const okByMime = allowedMimes.includes(file.mimetype);
+
+        if (!okByExt && !okByMime) {
+          return cb(new Error("Only .xlsx or .xls files are allowed"), false);
+        }
+        cb(null, true);
+      },
+    })
+  )
+  async bulkUpload(@Req() req: Request, @UploadedFile() file: UploadedExcelFile) {
+    if (!file) {
+      throw new BadRequestException("Excel file is required");
+    }
+
+    return this.productsService.bulkUploadFromExcel(file, req.headers.authorization);
+  }
+
   @Post("create")
   @ApiOperation({ summary: "Create new product" })
-  @ApiConsumes("multipart/form-data")
   @ApiResponse({
     status: 201,
     description: "Product created successfully",
@@ -81,7 +152,6 @@ export class ProductsController {
         "category_id",
         "brand_id",
         "currency",
-        "file",
       ],
       properties: {
         title: { type: "string", example: "Nike Air Max" },
@@ -97,37 +167,19 @@ export class ProductsController {
           example: "123e4567-e89b-12d3-a456-426614174000",
         },
         currency: { type: "string", example: "USD" },
-        file: { type: "string", format: "binary" },
+        product_img_url: {
+          type: "string",
+          example: "http://localhost:3003/public/products/your-file.webp",
+        },
       },
     },
   })
-  @UseInterceptors(
-    FileInterceptor("file", {
-      storage: memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 },
-      fileFilter: (req, file, cb) => {
-        const allowed = ["image/jpeg", "image/png", "image/webp"];
-        if (!allowed.includes(file.mimetype)) {
-          return cb(new Error("Only jpeg, png, webp images are allowed"), false);
-        }
-        cb(null, true);
-      },
-    })
-  )
-  async create(
-    @Req() req: Request,
-    @Body(ValidationPipe) createProductDto: CreateProductDto,
-    @UploadedFile() file: UploadedImageFile
-  ) {
-    if (!file) {
-      throw new BadRequestException("Product image file is required");
-    }
-    return this.productsService.create(createProductDto, file, req.headers.authorization);
+  async create(@Req() req: Request, @Body(ValidationPipe) createProductDto: CreateProductDto) {
+    return this.productsService.create(createProductDto, req.headers.authorization);
   }
 
   @Put("update")
   @ApiOperation({ summary: "Update product" })
-  @ApiConsumes("multipart/form-data")
   @ApiResponse({
     status: 200,
     description: "Product updated successfully",
@@ -176,29 +228,15 @@ export class ProductsController {
           example: "123e4567-e89b-12d3-a456-426614174000",
         },
         currency: { type: "string", example: "USD" },
-        file: { type: "string", format: "binary" },
+        product_img_url: {
+          type: "string",
+          example: "http://localhost:3003/public/products/your-file.webp",
+        },
       },
     },
   })
-  @UseInterceptors(
-    FileInterceptor("file", {
-      storage: memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 },
-      fileFilter: (req, file, cb) => {
-        const allowed = ["image/jpeg", "image/png", "image/webp"];
-        if (!allowed.includes(file.mimetype)) {
-          return cb(new Error("Only jpeg, png, webp images are allowed"), false);
-        }
-        cb(null, true);
-      },
-    })
-  )
-  async update(
-    @Req() req: Request,
-    @Body(ValidationPipe) updateProductDto: UpdateProductDto,
-    @UploadedFile() file?: UploadedImageFile
-  ) {
-    return this.productsService.update(updateProductDto, file, req.headers.authorization);
+  async update(@Req() req: Request, @Body(ValidationPipe) updateProductDto: UpdateProductDto) {
+    return this.productsService.update(updateProductDto, req.headers.authorization);
   }
 
   @Get("getById/:id")

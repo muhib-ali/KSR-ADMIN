@@ -3,6 +3,8 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { Role } from "../entities/role.entity";
 import { Module } from "../entities/module.entity";
+import { Category } from "../entities/category.entity";
+import { Brand } from "../entities/brand.entity";
 import { ResponseHelper } from "../common/helpers/response.helper";
 import { ApiResponse } from "../common/interfaces/api-response.interface";
 
@@ -12,7 +14,11 @@ export class DropdownsService {
     @InjectRepository(Role)
     private roleRepository: Repository<Role>,
     @InjectRepository(Module)
-    private moduleRepository: Repository<Module>
+    private moduleRepository: Repository<Module>,
+    @InjectRepository(Category)
+    private categoryRepository: Repository<Category>,
+    @InjectRepository(Brand)
+    private brandRepository: Repository<Brand>
   ) {}
 
   async getAllRoles(): Promise<ApiResponse<any>> {
@@ -49,6 +55,44 @@ export class DropdownsService {
     return ResponseHelper.success(
       { modulesDropdown },
       "Modules dropdown data retrieved successfully",
+      "Dropdowns"
+    );
+  }
+
+  async getAllCategories(): Promise<ApiResponse<any>> {
+    const categories = await this.categoryRepository.find({
+      where: { is_active: true },
+      select: ["id", "name"],
+      order: { name: "ASC" },
+    });
+
+    const categoriesDropdown = categories.map((category) => ({
+      label: category.name,
+      value: category.id,
+    }));
+
+    return ResponseHelper.success(
+      { categoriesDropdown },
+      "Categories dropdown data retrieved successfully",
+      "Dropdowns"
+    );
+  }
+
+  async getAllBrands(): Promise<ApiResponse<any>> {
+    const brands = await this.brandRepository.find({
+      where: { is_active: true },
+      select: ["id", "name"],
+      order: { name: "ASC" },
+    });
+
+    const brandsDropdown = brands.map((brand) => ({
+      label: brand.name,
+      value: brand.id,
+    }));
+
+    return ResponseHelper.success(
+      { brandsDropdown },
+      "Brands dropdown data retrieved successfully",
       "Dropdowns"
     );
   }

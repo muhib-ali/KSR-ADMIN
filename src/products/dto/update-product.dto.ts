@@ -5,6 +5,7 @@ import {
   IsUUID,
   IsNumber,
   IsInt,
+  IsBoolean,
   Min,
 } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
@@ -79,4 +80,22 @@ export class UpdateProductDto {
   @IsString()
   @IsNotEmpty()
   currency: string;
+
+  @ApiProperty({
+    description: "Product image URL",
+    example: "http://localhost:3003/public/products/your-file.webp",
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  product_img_url?: string;
+
+  @ApiProperty({
+    description: "Product active status",
+    example: true,
+    required: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  is_active?: boolean;
 }

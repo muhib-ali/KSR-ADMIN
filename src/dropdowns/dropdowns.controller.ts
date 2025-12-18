@@ -9,6 +9,8 @@ import { DropdownsService } from "./dropdowns.service";
 import {
   RolesDropdownResponseDto,
   ModulesDropdownResponseDto,
+  CategoriesDropdownResponseDto,
+  BrandsDropdownResponseDto,
 } from "./dto/dropdown-response.dto";
 
 @ApiTags("Dropdowns")
@@ -39,5 +41,29 @@ export class DropdownsController {
   @ApiResponse({ status: 401, description: "Unauthorized" })
   async getAllModules() {
     return this.dropdownsService.getAllModules();
+  }
+
+  @Get("getAllCategories")
+  @ApiOperation({ summary: "Get all active categories for dropdown" })
+  @ApiResponse({
+    status: 200,
+    description: "Categories dropdown data retrieved successfully",
+    type: CategoriesDropdownResponseDto,
+  })
+  @ApiResponse({ status: 401, description: "Unauthorized" })
+  async getAllCategories() {
+    return this.dropdownsService.getAllCategories();
+  }
+
+  @Get("getAllBrands")
+  @ApiOperation({ summary: "Get all active brands for dropdown" })
+  @ApiResponse({
+    status: 200,
+    description: "Brands dropdown data retrieved successfully",
+    type: BrandsDropdownResponseDto,
+  })
+  @ApiResponse({ status: 401, description: "Unauthorized" })
+  async getAllBrands() {
+    return this.dropdownsService.getAllBrands();
   }
 }

@@ -180,6 +180,16 @@ async function seed() {
         title: "Get All Modules",
         description: "Get all modules for dropdown",
       }, // this record will insert for dropdowns module only
+      {
+        slug: "getAllCategories",
+        title: "Get All Categories",
+        description: "Get all categories for dropdown",
+      }, // this record will insert for dropdowns module only
+      {
+        slug: "getAllBrands",
+        title: "Get All Brands",
+        description: "Get all brands for dropdown",
+      }, // this record will insert for dropdowns module only
       { slug: "getAll", title: "Get All", description: "List all" },
       { slug: "delete", title: "Delete", description: "Delete" },
     ];
@@ -198,7 +208,9 @@ async function seed() {
         // Skip dropdowns-specific permissions for non-dropdowns modules
         if (
           (permDef.slug === "getAllRoles" ||
-            permDef.slug === "getAllModules") &&
+            permDef.slug === "getAllModules" ||
+            permDef.slug === "getAllCategories" ||
+            permDef.slug === "getAllBrands") &&
           module.slug !== "dropdowns"
         ) {
           continue; // Skip these permissions for non-dropdowns modules
@@ -208,7 +220,9 @@ async function seed() {
         if (
           module.slug === "dropdowns" &&
           permDef.slug !== "getAllRoles" &&
-          permDef.slug !== "getAllModules"
+          permDef.slug !== "getAllModules" &&
+          permDef.slug !== "getAllCategories" &&
+          permDef.slug !== "getAllBrands"
         ) {
           continue; // Skip all other permissions for dropdowns module
         }
@@ -276,7 +290,15 @@ async function seed() {
 
     if (platformManager) {
       // Platform Manager → only getAll, getById, update true; do not insert denied permissions
-      const allowedSlugs = ["getAll", "getById", "update"];
+      const allowedSlugs = [
+        "getAll",
+        "getById",
+        "update",
+        "getAllRoles",
+        "getAllModules",
+        "getAllCategories",
+        "getAllBrands",
+      ];
 
       for (const permission of permissions) {
         // Only insert permissions that are allowed (no denied permissions)

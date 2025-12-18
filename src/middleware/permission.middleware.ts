@@ -73,11 +73,16 @@ export class PermissionMiddleware implements NestMiddleware {
         throw new ForbiddenException("Invalid route format");
       }
 
+      const permissionSlugToCheck =
+        moduleSlug === "products" && permissionSlug === "bulk-upload"
+          ? "create"
+          : permissionSlug;
+
       // Check permission (with caching)
       const hasPermission = await this.checkPermissionCached(
         user.role.id,
         moduleSlug,
-        permissionSlug
+        permissionSlugToCheck
       );
 
       if (!hasPermission) {
