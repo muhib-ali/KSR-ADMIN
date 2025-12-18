@@ -29,6 +29,140 @@ export class ProductsService {
     private brandRepository: Repository<Brand>
   ) {}
 
+  private readonly filesBackendBaseUrl =
+    process.env.FILES_BACKEND_URL || "http://localhost:3003";
+
+  private extractProductsFileNameFromUrl(url: string): string | null {
+    try {
+      const u = new URL(url);
+      const prefix = "/public/products/";
+      if (!u.pathname.startsWith(prefix)) {
+        return null;
+      }
+      const fileName = u.pathname.slice(prefix.length);
+      if (!fileName) {
+        return null;
+      }
+      return fileName;
+    } catch {
+      return null;
+    }
+  }
+
+  private async deleteProductImageFromFilesBackend(
+    fileName: string,
+    authorizationHeader?: string
+  ): Promise<void> {
+    const endpoint = `${this.filesBackendBaseUrl}/v1/products/image/${encodeURIComponent(
+      fileName
+    )}`;
+
+    const fetchFn: any = (global as any).fetch;
+    const AbortControllerCtor: any = (global as any).AbortController;
+
+    if (!fetchFn) {
+      return;
+    }
+
+    const headers: Record<string, string> = {};
+    if (authorizationHeader) {
+      headers["authorization"] = authorizationHeader;
+    }
+
+    const controller = AbortControllerCtor ? new AbortControllerCtor() : undefined;
+    const timeoutMs = parseInt(process.env.FILES_BACKEND_TIMEOUT_MS || "15000", 10);
+    const timeoutId = controller
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : undefined;
+
+    try {
+      await fetchFn(endpoint, {
+        method: "DELETE",
+        headers,
+        signal: controller?.signal,
+      });
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
+  private async uploadProductImageToFilesBackend(
+    productId: string,
+    file: { buffer: Buffer; mimetype: string; originalname: string },
+    authorizationHeader?: string
+  ): Promise<string> {
+    const endpoint = `${this.filesBackendBaseUrl}/v1/products/${productId}/image`;
+
+    const fetchFn: any = (global as any).fetch;
+    const FormDataCtor: any = (global as any).FormData;
+    const BlobCtor: any = (global as any).Blob;
+    const AbortControllerCtor: any = (global as any).AbortController;
+
+    if (!fetchFn || !FormDataCtor || !BlobCtor) {
+      throw new BadRequestException(
+        "Files upload requires Node.js runtime with fetch/FormData/Blob support"
+      );
+    }
+
+    const form = new FormDataCtor();
+    const blob = new BlobCtor([file.buffer], { type: file.mimetype });
+    form.append("file", blob, file.originalname);
+
+    const headers: Record<string, string> = {};
+    if (authorizationHeader) {
+      headers["authorization"] = authorizationHeader;
+    }
+
+    const controller = AbortControllerCtor ? new AbortControllerCtor() : undefined;
+    const timeoutMs = parseInt(process.env.FILES_BACKEND_TIMEOUT_MS || "15000", 10);
+    const timeoutId = controller
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : undefined;
+
+    try {
+      const res = await fetchFn(endpoint, {
+        method: "POST",
+        body: form,
+        headers,
+        signal: controller?.signal,
+      });
+
+      const text = await res.text();
+      let json: any;
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch {
+        json = {};
+      }
+
+      if (!res.ok) {
+        throw new BadRequestException(
+          json?.message || `Files backend upload failed (${res.status})`
+        );
+      }
+
+      const url =
+        json?.url ||
+        json?.data?.url ||
+        json?.data?.fileUrl ||
+        json?.data?.file_url;
+
+      if (!url || typeof url !== "string") {
+        throw new BadRequestException(
+          "Files backend did not return a valid image URL"
+        );
+      }
+
+      return url;
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
   private sanitizeSkuSegment(value: string): string {
     return (value || "")
       .trim()
@@ -71,7 +205,9 @@ export class ProductsService {
   }
 
   async create(
-    createProductDto: CreateProductDto
+    createProductDto: CreateProductDto,
+    file: { buffer: Buffer; mimetype: string; originalname: string },
+    authorizationHeader?: string
   ): Promise<ApiResponse<Product>> {
     const {
       title,
@@ -81,7 +217,6 @@ export class ProductsService {
       category_id,
       brand_id,
       currency,
-      product_img_url,
     } = createProductDto;
 
     const category = await this.categoryRepository.findOne({
@@ -108,11 +243,25 @@ export class ProductsService {
       category_id,
       brand_id,
       currency,
-      product_img_url,
       sku,
     });
 
     const savedProduct = await this.productRepository.save(product);
+
+    try {
+      const productImgUrl = await this.uploadProductImageToFilesBackend(
+        savedProduct.id,
+        file,
+        authorizationHeader
+      );
+
+      await this.productRepository.update(savedProduct.id, {
+        product_img_url: productImgUrl,
+      });
+    } catch (error) {
+      await this.productRepository.remove(savedProduct);
+      throw error;
+    }
 
     const productWithRelations = await this.productRepository.findOne({
       where: { id: savedProduct.id },
@@ -127,7 +276,11 @@ export class ProductsService {
     );
   }
 
-  async update(updateProductDto: UpdateProductDto): Promise<ApiResponse<Product>> {
+  async update(
+    updateProductDto: UpdateProductDto,
+    file?: { buffer: Buffer; mimetype: string; originalname: string },
+    authorizationHeader?: string
+  ): Promise<ApiResponse<Product>> {
     const {
       id,
       title,
@@ -137,7 +290,6 @@ export class ProductsService {
       category_id,
       brand_id,
       currency,
-      product_img_url,
     } = updateProductDto;
 
     const product = await this.productRepository.findOne({ where: { id } });
@@ -167,8 +319,46 @@ export class ProductsService {
       category_id,
       brand_id,
       currency,
-      product_img_url,
     };
+
+    if (file) {
+      const previousUrl = (product as any).product_img_url as string | undefined;
+      const previousFileName = previousUrl
+        ? this.extractProductsFileNameFromUrl(previousUrl)
+        : null;
+
+      const productImgUrl = await this.uploadProductImageToFilesBackend(
+        product.id,
+        file,
+        authorizationHeader
+      );
+      (updateData as any).product_img_url = productImgUrl;
+
+      await this.productRepository.update(id, updateData);
+
+      if (previousFileName) {
+        try {
+          await this.deleteProductImageFromFilesBackend(
+            previousFileName,
+            authorizationHeader
+          );
+        } catch {
+          // Best-effort cleanup only
+        }
+      }
+
+      const updatedProduct = await this.productRepository.findOne({
+        where: { id },
+        relations: ["category", "brand"],
+      });
+
+      return ResponseHelper.success(
+        updatedProduct!,
+        "Product updated successfully",
+        "Product",
+        200
+      );
+    }
 
     await this.productRepository.update(id, updateData);
 
@@ -251,7 +441,10 @@ export class ProductsService {
     );
   }
 
-  async delete(deleteProductDto: DeleteProductDto): Promise<ApiResponse<null>> {
+  async delete(
+    deleteProductDto: DeleteProductDto,
+    authorizationHeader?: string
+  ): Promise<ApiResponse<null>> {
     const { id } = deleteProductDto;
 
     const product = await this.productRepository.findOne({ where: { id } });
@@ -259,7 +452,23 @@ export class ProductsService {
       throw new NotFoundException("Product not found");
     }
 
+    const previousUrl = (product as any).product_img_url as string | undefined;
+    const previousFileName = previousUrl
+      ? this.extractProductsFileNameFromUrl(previousUrl)
+      : null;
+
     await this.productRepository.remove(product);
+
+    if (previousFileName) {
+      try {
+        await this.deleteProductImageFromFilesBackend(
+          previousFileName,
+          authorizationHeader
+        );
+      } catch {
+        // Best-effort cleanup only
+      }
+    }
 
     return ResponseHelper.success(
       null,
