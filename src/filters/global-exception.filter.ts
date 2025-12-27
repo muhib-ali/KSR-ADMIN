@@ -71,6 +71,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       return "Role";
     } else if (path.includes("/users/")) {
       return "User";
+    } else if (path.includes("/taxes/")) {
+      return "Tax";
+    } else if (path.includes("/categories/")) {
+      return "Category";
+    } else if (path.includes("/brands/")) {
+      return "Brand";
+    } else if (path.includes("/suppliers/")) {
+      return "Supplier";
+    } else if (path.includes("/warehouses/")) {
+      return "Warehouse";
+    } else if (path.includes("/products/")) {
+      return "Product";
     } else if (path.includes("/health")) {
       return "Health";
     } else {
