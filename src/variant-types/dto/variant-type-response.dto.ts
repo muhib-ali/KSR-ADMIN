@@ -1,6 +1,50 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { VariantType } from "../../entities/variant-type.entity";
-import { Variant } from "../../entities/variant.entity";
+
+export class VariantTypeDto {
+  @ApiProperty({
+    description: "Variant type ID",
+    example: "uuid",
+  })
+  id: string;
+
+  @ApiProperty({
+    description: "Variant type name",
+    example: "Color",
+  })
+  name: string;
+
+  @ApiProperty({
+    description: "Is variant type active",
+    example: true,
+  })
+  is_active: boolean;
+
+  @ApiProperty({
+    description: "Created by user ID",
+    example: "user-uuid",
+    nullable: true,
+  })
+  created_by?: string;
+
+  @ApiProperty({
+    description: "Updated by user ID",
+    example: "user-uuid",
+    nullable: true,
+  })
+  updated_by?: string;
+
+  @ApiProperty({
+    description: "Created at",
+    example: "2024-01-01T00:00:00Z",
+  })
+  created_at: string;
+
+  @ApiProperty({
+    description: "Updated at",
+    example: "2024-01-01T00:00:00Z",
+  })
+  updated_at: string;
+}
 
 export class VariantTypeResponseDto {
   @ApiProperty({
@@ -23,9 +67,9 @@ export class VariantTypeResponseDto {
 
   @ApiProperty({
     description: "Response data",
-    type: VariantType,
+    type: VariantTypeDto,
   })
-  data: VariantType;
+  data: VariantTypeDto;
 
   @ApiProperty({
     description: "HTTP status code",
@@ -56,7 +100,7 @@ export class VariantTypesListResponseDto {
   @ApiProperty({
     description: "Response data with pagination",
     example: {
-      items: [VariantType],
+      items: [VariantTypeDto],
       totalItems: 50,
       currentPage: 1,
       totalPages: 5,
@@ -64,7 +108,7 @@ export class VariantTypesListResponseDto {
     },
   })
   data: {
-    items: VariantType[];
+    items: VariantTypeDto[];
     totalItems: number;
     currentPage: number;
     totalPages: number;
