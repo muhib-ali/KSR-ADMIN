@@ -5,6 +5,10 @@ import { Role } from "../entities/role.entity";
 import { Module } from "../entities/module.entity";
 import { Category } from "../entities/category.entity";
 import { Brand } from "../entities/brand.entity";
+import { Tax } from "../entities/tax.entity";
+import { Supplier } from "../entities/supplier.entity";
+import { Warehouse } from "../entities/warehouse.entity";
+import { VariantType } from "../entities/variant-type.entity";
 import { ResponseHelper } from "../common/helpers/response.helper";
 import { ApiResponse } from "../common/interfaces/api-response.interface";
 
@@ -18,7 +22,15 @@ export class DropdownsService {
     @InjectRepository(Category)
     private categoryRepository: Repository<Category>,
     @InjectRepository(Brand)
-    private brandRepository: Repository<Brand>
+    private brandRepository: Repository<Brand>,
+    @InjectRepository(Tax)
+    private taxRepository: Repository<Tax>,
+    @InjectRepository(Supplier)
+    private supplierRepository: Repository<Supplier>,
+    @InjectRepository(Warehouse)
+    private warehouseRepository: Repository<Warehouse>,
+    @InjectRepository(VariantType)
+    private variantTypeRepository: Repository<VariantType>
   ) {}
 
   async getAllRoles(): Promise<ApiResponse<any>> {
@@ -93,6 +105,82 @@ export class DropdownsService {
     return ResponseHelper.success(
       { brandsDropdown },
       "Brands dropdown data retrieved successfully",
+      "Dropdowns"
+    );
+  }
+
+  async getAllTaxes(): Promise<ApiResponse<any>> {
+    const taxes = await this.taxRepository.find({
+      where: { is_active: true },
+      select: ["id", "title"],
+      order: { title: "ASC" },
+    });
+
+    const taxesDropdown = taxes.map((tax) => ({
+      label: tax.title,
+      value: tax.id,
+    }));
+
+    return ResponseHelper.success(
+      { taxesDropdown },
+      "Taxes dropdown data retrieved successfully",
+      "Dropdowns"
+    );
+  }
+
+  async getAllSuppliers(): Promise<ApiResponse<any>> {
+    const suppliers = await this.supplierRepository.find({
+      where: { is_active: true },
+      select: ["id", "supplier_name"],
+      order: { supplier_name: "ASC" },
+    });
+
+    const suppliersDropdown = suppliers.map((supplier) => ({
+      label: supplier.supplier_name,
+      value: supplier.id,
+    }));
+
+    return ResponseHelper.success(
+      { suppliersDropdown },
+      "Suppliers dropdown data retrieved successfully",
+      "Dropdowns"
+    );
+  }
+
+  async getAllWarehouses(): Promise<ApiResponse<any>> {
+    const warehouses = await this.warehouseRepository.find({
+      where: { is_active: true },
+      select: ["id", "name"],
+      order: { name: "ASC" },
+    });
+
+    const warehousesDropdown = warehouses.map((warehouse) => ({
+      label: warehouse.name,
+      value: warehouse.id,
+    }));
+
+    return ResponseHelper.success(
+      { warehousesDropdown },
+      "Warehouses dropdown data retrieved successfully",
+      "Dropdowns"
+    );
+  }
+
+  async getAllVariantTypes(): Promise<ApiResponse<any>> {
+    const variantTypes = await this.variantTypeRepository.find({
+      where: { is_active: true },
+      select: ["id", "name"],
+      order: { name: "ASC" },
+    });
+
+    const variantTypesDropdown = variantTypes.map((variantType) => ({
+      label: variantType.name,
+      value: variantType.id,
+    }));
+
+    return ResponseHelper.success(
+      { variantTypesDropdown },
+      "Variant types dropdown data retrieved successfully",
       "Dropdowns"
     );
   }

@@ -6,10 +6,14 @@ import { Role } from "../entities/role.entity";
 import { Module as ModuleEntity } from "../entities/module.entity";
 import { Category } from "../entities/category.entity";
 import { Brand } from "../entities/brand.entity";
+import { Tax } from "../entities/tax.entity";
+import { Supplier } from "../entities/supplier.entity";
+import { Warehouse } from "../entities/warehouse.entity";
+import { VariantType } from "../entities/variant-type.entity";
 import { AuthModule } from "../auth/auth.module";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Role, ModuleEntity, Category, Brand]), AuthModule],
+  imports: [TypeOrmModule.forFeature([Role, ModuleEntity, Category, Brand, Tax, Supplier, Warehouse, VariantType]), AuthModule],
   controllers: [DropdownsController],
   providers: [DropdownsService],
   exports: [DropdownsService],

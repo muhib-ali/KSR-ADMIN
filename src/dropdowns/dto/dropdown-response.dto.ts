@@ -46,6 +46,38 @@ export class BrandsDropdownDataDto {
   brandsDropdown: DropdownItemDto[];
 }
 
+export class TaxesDropdownDataDto {
+  @ApiProperty({
+    type: [DropdownItemDto],
+    description: "Array of taxes for dropdown",
+  })
+  taxesDropdown: DropdownItemDto[];
+}
+
+export class SuppliersDropdownDataDto {
+  @ApiProperty({
+    type: [DropdownItemDto],
+    description: "Array of suppliers for dropdown",
+  })
+  suppliersDropdown: DropdownItemDto[];
+}
+
+export class WarehousesDropdownDataDto {
+  @ApiProperty({
+    type: [DropdownItemDto],
+    description: "Array of warehouses for dropdown",
+  })
+  warehousesDropdown: DropdownItemDto[];
+}
+
+export class VariantTypesDropdownDataDto {
+  @ApiProperty({
+    type: [DropdownItemDto],
+    description: "Array of variant types for dropdown",
+  })
+  variantTypesDropdown: DropdownItemDto[];
+}
+
 export class RolesDropdownResponseDto {
   @ApiProperty({ example: 200 })
   statusCode: number;
@@ -112,4 +144,72 @@ export class BrandsDropdownResponseDto {
 
   @ApiProperty({ type: BrandsDropdownDataDto })
   data: BrandsDropdownDataDto;
+}
+
+export class TaxesDropdownResponseDto {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+
+  @ApiProperty({ example: true })
+  status: boolean;
+
+  @ApiProperty({ example: "Taxes dropdown data retrieved successfully" })
+  message: string;
+
+  @ApiProperty({ example: "Dropdowns" })
+  heading: string;
+
+  @ApiProperty({ type: TaxesDropdownDataDto })
+  data: TaxesDropdownDataDto;
+}
+
+export class SuppliersDropdownResponseDto {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+
+  @ApiProperty({ example: true })
+  status: boolean;
+
+  @ApiProperty({ example: "Suppliers dropdown data retrieved successfully" })
+  message: string;
+
+  @ApiProperty({ example: "Dropdowns" })
+  heading: string;
+
+  @ApiProperty({ type: SuppliersDropdownDataDto })
+  data: SuppliersDropdownDataDto;
+}
+
+export class WarehousesDropdownResponseDto {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+
+  @ApiProperty({ example: true })
+  status: boolean;
+
+  @ApiProperty({ example: "Warehouses dropdown data retrieved successfully" })
+  message: string;
+
+  @ApiProperty({ example: "Dropdowns" })
+  heading: string;
+
+  @ApiProperty({ type: WarehousesDropdownDataDto })
+  data: WarehousesDropdownDataDto;
+}
+
+export class VariantTypesDropdownResponseDto {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+
+  @ApiProperty({ example: true })
+  status: boolean;
+
+  @ApiProperty({ example: "Variant types dropdown data retrieved successfully" })
+  message: string;
+
+  @ApiProperty({ example: "Dropdowns" })
+  heading: string;
+
+  @ApiProperty({ type: VariantTypesDropdownDataDto })
+  data: VariantTypesDropdownDataDto;
 }

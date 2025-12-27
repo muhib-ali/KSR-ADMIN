@@ -139,6 +139,24 @@ async function seed() {
         description: "Manage products",
         is_active: true,
       },
+      {
+        title:"Taxes",
+        slug:"taxes",
+        description:"Manage taxes",
+        is_active:true
+      },
+      {
+        title:"Suppliers",
+        slug:"suppliers",
+        description:"Manage suppliers",
+        is_active:true
+      },
+      {
+        title:"Warehouses",
+        slug:"warehouses",
+        description:"Manage warehouses",
+        is_active:true
+      }
     ];
 
     for (const moduleData of modulesData) {
@@ -189,8 +207,27 @@ async function seed() {
         slug: "getAllBrands",
         title: "Get All Brands",
         description: "Get all brands for dropdown",
-      }, // this record will insert for dropdowns module only
+      }, 
+      {
+        slug: "getAllTaxes",
+        title: "Get All Taxes",
+        description: "Get all taxes for dropdown",
+      }, 
+      {
+        slug: "getAllSuppliers",
+        title: "Get All Suppliers",
+        description: "Get all suppliers for dropdown",
+      },
+      {
+        slug: "getAllWarehouses",
+        title: "Get All Warehouses",
+        description: "Get all warehouses for dropdown",
+      }, 
+      
+      // this record will insert for dropdowns module only
       { slug: "getAll", title: "Get All", description: "List all" },
+      { slug: "create", title: "Create", description: "Create" },
+      { slug: "update", title: "Update", description: "Update" },
       { slug: "delete", title: "Delete", description: "Delete" },
     ];
 
@@ -210,7 +247,10 @@ async function seed() {
           (permDef.slug === "getAllRoles" ||
             permDef.slug === "getAllModules" ||
             permDef.slug === "getAllCategories" ||
-            permDef.slug === "getAllBrands") &&
+            permDef.slug === "getAllBrands" ||
+            permDef.slug === "getAllTaxes" ||
+            permDef.slug === "getAllSuppliers" ||
+            permDef.slug === "getAllWarehouses") &&
           module.slug !== "dropdowns"
         ) {
           continue; // Skip these permissions for non-dropdowns modules
@@ -222,9 +262,12 @@ async function seed() {
           permDef.slug !== "getAllRoles" &&
           permDef.slug !== "getAllModules" &&
           permDef.slug !== "getAllCategories" &&
-          permDef.slug !== "getAllBrands"
+          permDef.slug !== "getAllBrands" &&
+          permDef.slug !== "getAllTaxes" &&
+          permDef.slug !== "getAllSuppliers" &&
+          permDef.slug !== "getAllWarehouses"
         ) {
-          continue; // Skip all other permissions for dropdowns module
+          continue; // Only allow specific permissions for dropdowns module
         }
 
         const permissionData = {

@@ -132,6 +132,23 @@ export class Init1700000000000 implements MigrationInterface {
         `);
 
     await queryRunner.query(`
+            CREATE TABLE "product_images" (
+                "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                "is_active" boolean NOT NULL DEFAULT true,
+                "created_by" character varying,
+                "updated_by" character varying,
+                "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                "product_id" uuid NOT NULL,
+                "url" character varying NOT NULL,
+                "file_name" character varying NOT NULL,
+                "sort_order" integer NOT NULL,
+                CONSTRAINT "UQ_product_images_product_id_sort_order" UNIQUE ("product_id", "sort_order"),
+                CONSTRAINT "FK_product_images_product_id" FOREIGN KEY ("product_id") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE NO ACTION
+            )
+        `);
+
+    await queryRunner.query(`
             CREATE TABLE "tenants" (
                 "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                 "is_active" boolean NOT NULL DEFAULT true,
@@ -261,6 +278,7 @@ export class Init1700000000000 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE IF EXISTS "permissions"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "tenant_allowed_locations"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "tenants"`);
+    await queryRunner.query(`DROP TABLE IF EXISTS "product_images"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "products"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "brands"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "categories"`);

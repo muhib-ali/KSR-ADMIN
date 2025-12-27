@@ -7,9 +7,15 @@ import {
   IsInt,
   IsBoolean,
   Min,
+  IsDate,
+  IsArray,
+  ValidateNested,
 } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 import { Type } from "class-transformer";
+import { CreateVariantDto } from "./create-variant.dto";
+import { CreateBulkPriceDto } from "./create-bulk-price.dto";
+import { CreateCvgProductDto } from "./create-cvg-product.dto";
 
 export class CreateProductDto {
   @ApiProperty({
@@ -83,6 +89,15 @@ export class CreateProductDto {
   product_img_url?: string;
 
   @ApiProperty({
+    description: "Product video URL",
+    example: "http://localhost:3003/public/products/your-video.mp4",
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  product_video_url?: string;
+
+  @ApiProperty({
     description: "Product active status",
     example: true,
     required: false,
@@ -90,4 +105,148 @@ export class CreateProductDto {
   @IsBoolean()
   @IsOptional()
   is_active?: boolean;
+
+  @ApiProperty({
+    description: "Discount percentage",
+    example: 10.50,
+    required: false,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  discount?: number;
+
+  @ApiProperty({
+    description: "Discount start date",
+    example: "2024-01-01T00:00:00Z",
+    required: false,
+  })
+  @Type(() => Date)
+  @IsDate()
+  @IsOptional()
+  start_discount_date?: Date;
+
+  @ApiProperty({
+    description: "Discount end date",
+    example: "2024-12-31T23:59:59Z",
+    required: false,
+  })
+  @Type(() => Date)
+  @IsDate()
+  @IsOptional()
+  end_discount_date?: Date;
+
+  @ApiProperty({
+    description: "Product length",
+    example: 25.50,
+    required: false,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  length?: number;
+
+  @ApiProperty({
+    description: "Product width",
+    example: 15.75,
+    required: false,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  width?: number;
+
+  @ApiProperty({
+    description: "Product height",
+    example: 8.25,
+    required: false,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  height?: number;
+
+  @ApiProperty({
+    description: "Product weight",
+    example: 2.5,
+    required: false,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  weight?: number;
+
+  @ApiProperty({
+    description: "Tax ID (UUID)",
+    example: "123e4567-e89b-12d3-a456-426614174000",
+    required: false,
+  })
+  @IsUUID()
+  @IsOptional()
+  tax_id?: string;
+
+  @ApiProperty({
+    description: "Supplier ID (UUID)",
+    example: "123e4567-e89b-12d3-a456-426614174000",
+    required: false,
+  })
+  @IsUUID()
+  @IsOptional()
+  supplier_id?: string;
+
+  @ApiProperty({
+    description: "Warehouse ID (UUID)",
+    example: "123e4567-e89b-12d3-a456-426614174000",
+    required: false,
+  })
+  @IsUUID()
+  @IsOptional()
+  warehouse_id?: string;
+
+  @ApiProperty({
+    description: "Total price after tax (calculated by frontend)",
+    example: 219.99,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @IsNotEmpty()
+  @Min(0)
+  total_price: number;
+
+  @ApiProperty({
+    description: "Product variants",
+    type: [CreateVariantDto],
+    required: false,
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateVariantDto)
+  @IsOptional()
+  variants?: CreateVariantDto[];
+
+  @ApiProperty({
+    description: "Customer visibility groups",
+    type: CreateCvgProductDto,
+    required: false,
+  })
+  @ValidateNested()
+  @Type(() => CreateCvgProductDto)
+  @IsOptional()
+  customer_groups?: CreateCvgProductDto;
+
+  @ApiProperty({
+    description: "Bulk pricing tiers",
+    type: [CreateBulkPriceDto],
+    required: false,
+  })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateBulkPriceDto)
+  @IsOptional()
+  bulk_prices?: CreateBulkPriceDto[];
 }

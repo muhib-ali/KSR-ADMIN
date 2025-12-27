@@ -19,6 +19,10 @@ import { SharedModule } from "./shared/shared.module";
 import { CategoriesModule } from "./categories/categories.module";
 import { BrandsModule } from "./brands/brands.module";
 import { ProductsModule } from "./products/products.module";
+import { TaxesModule } from "./taxes/taxes.module";
+import { SuppliersModule } from "./suppliers/suppliers.module";
+import { WarehousesModule } from "./warehouses/warehouses.module";
+import { VariantTypesModule } from "./variant-types/variant-types.module";
 import { PermissionMiddleware } from "./middleware/permission.middleware";
 import { GlobalExceptionFilter } from "./filters/global-exception.filter";
 import { ThrottlerGuard } from "@nestjs/throttler";
@@ -110,6 +114,10 @@ import { OauthToken } from "./entities/oauth-token.entity";
     CategoriesModule,
     BrandsModule,
     ProductsModule,
+    TaxesModule,
+    SuppliersModule,
+    WarehousesModule,
+    VariantTypesModule,
     HealthModule,
   ],
   providers: [
@@ -129,7 +137,7 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(PermissionMiddleware)
-      .exclude("/auth/(.*)", "/health/(.*)", "/api/(.*)") // Exclude auth, health, and swagger routes
+      .exclude("/auth/(.*)", "/health/(.*)", "/api", "/api/(.*)", "/") // Exclude auth, health, swagger, and root routes
       .forRoutes("*"); // Apply to all other routes
   }
 }

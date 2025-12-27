@@ -11,9 +11,13 @@ import {
   ValidationPipe,
   Req,
   UploadedFile,
+  UploadedFiles,
   UseInterceptors,
 } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
+import {
+  FileInterceptor,
+  AnyFilesInterceptor,
+} from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
 import { Request } from "express";
 import {
@@ -44,6 +48,13 @@ type UploadedImageFile = {
   size: number;
 };
 
+type UploadedVideoFile = {
+  buffer: Buffer;
+  mimetype: string;
+  originalname: string;
+  size: number;
+};
+
 type UploadedExcelFile = {
   buffer: Buffer;
   mimetype: string;
@@ -56,6 +67,125 @@ type UploadedExcelFile = {
 @Controller("products")
 export class ProductsController {
   constructor(private productsService: ProductsService) {}
+
+  @Get("images/:productId")
+  @ApiOperation({ summary: "Get product images" })
+  @ApiParam({ name: "productId", description: "Product ID", type: String })
+  async getImages(@Param("productId") productId: string) {
+    return this.productsService.getImages(productId);
+  }
+
+  @Post("images/:productId")
+  @ApiOperation({ summary: "Upload product images (max 5)" })
+  @ApiConsumes("multipart/form-data")
+  @ApiParam({ name: "productId", description: "Product ID", type: String })
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["files"],
+      properties: {
+        files: { type: "array", items: { type: "string", format: "binary" } },
+      },
+    },
+  })
+  @UseInterceptors(
+    AnyFilesInterceptor({
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 5 * 1024 * 1024,
+        files: 5,
+      },
+      fileFilter: (req, file, cb) => {
+        const allowed = ["image/jpeg", "image/png", "image/webp"];
+        if (!allowed.includes(file.mimetype)) {
+          return cb(
+            new Error("Only jpeg, png, webp images are allowed"),
+            false
+          );
+        }
+        cb(null, true);
+      },
+    })
+  )
+  async uploadImages(
+    @Req() req: Request,
+    @Param("productId") productId: string,
+    @UploadedFiles() files: UploadedImageFile[]
+  ) {
+    const list = (files || []).map((f) => ({
+      buffer: f.buffer,
+      mimetype: f.mimetype,
+      originalname: f.originalname,
+    }));
+    return this.productsService.uploadImages(
+      productId,
+      list,
+      req.headers.authorization
+    );
+  }
+
+  @Post("video/:productId")
+  @ApiOperation({ summary: "Upload product video" })
+  @ApiConsumes("multipart/form-data")
+  @ApiParam({ name: "productId", description: "Product ID", type: String })
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["file"],
+      properties: {
+        file: { type: "string", format: "binary" },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 50 * 1024 * 1024, // 50MB for video
+      },
+      fileFilter: (req, file, cb) => {
+        const allowed = ["video/mp4", "video/webm", "video/ogg", "video/quicktime"];
+        if (!allowed.includes(file.mimetype)) {
+          return cb(
+            new Error("Only mp4, webm, ogg, quicktime videos are allowed"),
+            false
+          );
+        }
+        cb(null, true);
+      },
+    })
+  )
+  async uploadVideo(
+    @Req() req: Request,
+    @Param("productId") productId: string,
+    @UploadedFile() file: UploadedVideoFile
+  ) {
+    if (!file) {
+      throw new BadRequestException("Video file is required");
+    }
+
+    return this.productsService.uploadVideo(
+      productId,
+      file,
+      req.headers.authorization
+    );
+  }
+
+  @Delete("images/:productId/:imageId")
+  @ApiOperation({ summary: "Delete a product image" })
+  @ApiParam({ name: "productId", description: "Product ID", type: String })
+  @ApiParam({ name: "imageId", description: "Product image ID", type: String })
+  async deleteImage(
+    @Req() req: Request,
+    @Param("productId") productId: string,
+    @Param("imageId") imageId: string
+  ) {
+    return this.productsService.deleteImage(
+      productId,
+      imageId,
+      req.headers.authorization
+    );
+  }
 
   @Post("bulk-upload")
   @ApiOperation({ summary: "Bulk upload products via Excel (.xlsx/.xls)" })
@@ -142,38 +272,6 @@ export class ProductsController {
       },
     },
   })
-  @ApiBody({
-    schema: {
-      type: "object",
-      required: [
-        "title",
-        "price",
-        "stock_quantity",
-        "category_id",
-        "brand_id",
-        "currency",
-      ],
-      properties: {
-        title: { type: "string", example: "Nike Air Max" },
-        description: { type: "string", example: "Comfortable running shoes" },
-        price: { type: "number", example: 199.99 },
-        stock_quantity: { type: "integer", example: 50 },
-        category_id: {
-          type: "string",
-          example: "123e4567-e89b-12d3-a456-426614174000",
-        },
-        brand_id: {
-          type: "string",
-          example: "123e4567-e89b-12d3-a456-426614174000",
-        },
-        currency: { type: "string", example: "USD" },
-        product_img_url: {
-          type: "string",
-          example: "http://localhost:3003/public/products/your-file.webp",
-        },
-      },
-    },
-  })
   async create(@Req() req: Request, @Body(ValidationPipe) createProductDto: CreateProductDto) {
     return this.productsService.create(createProductDto, req.headers.authorization);
   }
@@ -195,43 +293,6 @@ export class ProductsController {
         message: "Product not found",
         heading: "Product",
         data: null,
-      },
-    },
-  })
-  @ApiBody({
-    schema: {
-      type: "object",
-      required: [
-        "id",
-        "title",
-        "price",
-        "stock_quantity",
-        "category_id",
-        "brand_id",
-        "currency",
-      ],
-      properties: {
-        id: {
-          type: "string",
-          example: "123e4567-e89b-12d3-a456-426614174000",
-        },
-        title: { type: "string", example: "Nike Air Max" },
-        description: { type: "string", example: "Comfortable running shoes" },
-        price: { type: "number", example: 199.99 },
-        stock_quantity: { type: "integer", example: 50 },
-        category_id: {
-          type: "string",
-          example: "123e4567-e89b-12d3-a456-426614174000",
-        },
-        brand_id: {
-          type: "string",
-          example: "123e4567-e89b-12d3-a456-426614174000",
-        },
-        currency: { type: "string", example: "USD" },
-        product_img_url: {
-          type: "string",
-          example: "http://localhost:3003/public/products/your-file.webp",
-        },
       },
     },
   })

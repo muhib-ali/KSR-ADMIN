@@ -76,6 +76,8 @@ export class PermissionMiddleware implements NestMiddleware {
       const permissionSlugToCheck =
         moduleSlug === "products" && permissionSlug === "bulk-upload"
           ? "create"
+          : moduleSlug === "products" && permissionSlug === "images"
+            ? "update"
           : permissionSlug;
 
       // Check permission (with caching)

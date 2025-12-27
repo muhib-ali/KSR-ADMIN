@@ -6,8 +6,14 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { Brackets, Repository } from "typeorm";
 import { Product } from "../entities/product.entity";
+import { ProductImage } from "../entities/product-image.entity";
 import { Category } from "../entities/category.entity";
 import { Brand } from "../entities/brand.entity";
+import { Variant } from "../entities/variant.entity";
+import { VariantType } from "../entities/variant-type.entity";
+import { CvgProduct } from "../entities/cvg-product.entity";
+import { BulkPrice } from "../entities/bulk-price.entity";
+import { CustomerVisibilityGroup } from "../entities/customer-visibility-group.entity";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { DeleteProductDto } from "./dto/delete-product.dto";
@@ -26,10 +32,22 @@ export class ProductsService {
   constructor(
     @InjectRepository(Product)
     private productRepository: Repository<Product>,
+    @InjectRepository(ProductImage)
+    private productImageRepository: Repository<ProductImage>,
     @InjectRepository(Category)
     private categoryRepository: Repository<Category>,
     @InjectRepository(Brand)
-    private brandRepository: Repository<Brand>
+    private brandRepository: Repository<Brand>,
+    @InjectRepository(Variant)
+    private variantRepository: Repository<Variant>,
+    @InjectRepository(VariantType)
+    private variantTypeRepository: Repository<VariantType>,
+    @InjectRepository(CvgProduct)
+    private cvgProductRepository: Repository<CvgProduct>,
+    @InjectRepository(BulkPrice)
+    private bulkPriceRepository: Repository<BulkPrice>,
+    @InjectRepository(CustomerVisibilityGroup)
+    private customerVisibilityGroupRepository: Repository<CustomerVisibilityGroup>
   ) {}
 
   private readonly filesBackendBaseUrl =
@@ -91,14 +109,52 @@ export class ProductsService {
     }
   }
 
+  private async deleteProductVideoFromFilesBackend(
+    fileName: string,
+    authorizationHeader?: string
+  ): Promise<void> {
+    const endpoint = `${this.filesBackendBaseUrl}/v1/products/video/${encodeURIComponent(
+      fileName
+    )}`;
+
+    const fetchFn: any = (global as any).fetch;
+    const AbortControllerCtor: any = (global as any).AbortController;
+
+    if (!fetchFn) {
+      return;
+    }
+
+    const headers: Record<string, string> = {};
+    if (authorizationHeader) {
+      headers["authorization"] = authorizationHeader;
+    }
+
+    const controller = AbortControllerCtor ? new AbortControllerCtor() : undefined;
+    const timeoutMs = parseInt(process.env.FILES_BACKEND_TIMEOUT_MS || "30000", 10);
+    const timeoutId = controller
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : undefined;
+
+    try {
+      await fetchFn(endpoint, {
+        method: "DELETE",
+        headers,
+        signal: controller?.signal,
+      });
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
   private getImageMimeTypeFromPath(path: string): string {
     const lower = (path || "").toLowerCase();
     if (lower.endsWith(".png")) return "image/png";
     if (lower.endsWith(".gif")) return "image/gif";
-    if (lower.endsWith(".webp")) return "image/webp";
-    if (lower.endsWith(".bmp")) return "image/bmp";
     if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-    return "application/octet-stream";
+    if (lower.endsWith(".webp")) return "image/webp";
+    return "image/jpeg";
   }
 
   private getImageFileExtFromMimeType(mimeType: string): string {
@@ -124,6 +180,46 @@ export class ProductsService {
         this.collectNodesByKey(v, key, out);
       }
     }
+    return out;
+  }
+
+  private async extractEmbeddedImagesForColumnsByRow(
+    fileBuffer: Buffer,
+    imageColumnIndicesZeroBased: number[]
+  ): Promise<Map<number, Array<{ buffer: Buffer; mimetype: string; originalname: string }>>> {
+    const cols = (imageColumnIndicesZeroBased || [])
+      .filter((n) => Number.isFinite(n))
+      .map((n) => Number(n));
+
+    const out = new Map<
+      number,
+      Array<{ buffer: Buffer; mimetype: string; originalname: string }>
+    >();
+
+    for (let i = 0; i < cols.length; i++) {
+      const col = cols[i];
+      let m = new Map<number, { buffer: Buffer; mimetype: string; originalname: string }>();
+      try {
+        m = await this.extractEmbeddedImagesByRowFromXlsx(fileBuffer, col);
+      } catch {
+        m = new Map();
+      }
+
+      for (const [rowNumber, img] of m.entries()) {
+        const arr = out.get(rowNumber) || [];
+        if (arr.length >= 5) continue;
+        // keep column order (image1..image5)
+        arr[i] = img;
+        out.set(rowNumber, arr);
+      }
+    }
+
+    // compact undefined slots and cap at 5
+    for (const [rowNumber, arr] of out.entries()) {
+      const compact = (arr || []).filter(Boolean).slice(0, 5);
+      out.set(rowNumber, compact);
+    }
+
     return out;
   }
 
@@ -440,6 +536,23 @@ export class ProductsService {
     file: { buffer: Buffer; mimetype: string; originalname: string },
     authorizationHeader?: string
   ): Promise<string> {
+    const saved = await this.uploadProductImagesToFilesBackend(
+      productId,
+      [file],
+      authorizationHeader
+    );
+    const first = saved?.[0]?.url;
+    if (!first) {
+      throw new BadRequestException("Files backend did not return a valid image URL");
+    }
+    return first;
+  }
+
+  private async uploadProductImagesToFilesBackend(
+    productId: string,
+    files: Array<{ buffer: Buffer; mimetype: string; originalname: string }>,
+    authorizationHeader?: string
+  ): Promise<Array<{ url: string; fileName: string; sortOrder: number }>> {
     const endpoint = `${this.filesBackendBaseUrl}/v1/products/${productId}/image`;
 
     const fetchFn: any = (global as any).fetch;
@@ -453,9 +566,16 @@ export class ProductsService {
       );
     }
 
+    const list = (files || []).filter(Boolean).slice(0, 5);
+    if (list.length < 1) {
+      throw new BadRequestException("Image file(s) are required");
+    }
+
     const form = new FormDataCtor();
-    const blob = new BlobCtor([file.buffer], { type: file.mimetype });
-    form.append("file", blob, file.originalname);
+    for (const f of list) {
+      const blob = new BlobCtor([f.buffer], { type: f.mimetype });
+      form.append("files", blob, f.originalname);
+    }
 
     const headers: Record<string, string> = {};
     if (authorizationHeader) {
@@ -490,24 +610,254 @@ export class ProductsService {
         );
       }
 
+      const images =
+        (Array.isArray(json?.images) && json.images) ||
+        (Array.isArray(json?.data?.images) && json.data.images) ||
+        null;
+
+      if (images) {
+        const out = images
+          .map((it: any, idx: number) => ({
+            url: String(it?.url ?? ""),
+            fileName: String(it?.fileName ?? it?.file_name ?? ""),
+            sortOrder: Number(it?.sortOrder ?? it?.sort_order ?? idx + 1),
+          }))
+          .filter((it: any) => it.url && it.fileName)
+          .slice(0, 5);
+
+        if (out.length < 1) {
+          throw new BadRequestException(
+            "Files backend did not return uploaded image details"
+          );
+        }
+        return out;
+      }
+
       const url =
         json?.url ||
         json?.data?.url ||
         json?.data?.fileUrl ||
         json?.data?.file_url;
-
-      if (!url || typeof url !== "string") {
-        throw new BadRequestException(
-          "Files backend did not return a valid image URL"
-        );
+      const fileName = json?.fileName || json?.data?.fileName || json?.data?.file_name;
+      if (typeof url === "string" && typeof fileName === "string") {
+        return [{ url, fileName, sortOrder: 1 }];
       }
 
-      return url;
+      throw new BadRequestException(
+        "Files backend did not return uploaded image details"
+      );
     } finally {
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
     }
+  }
+
+  private async uploadProductVideoToFilesBackend(
+    productId: string,
+    file: { buffer: Buffer; mimetype: string; originalname: string },
+    authorizationHeader?: string
+  ): Promise<{ url: string; fileName: string }> {
+    const endpoint = `${this.filesBackendBaseUrl}/v1/products/${productId}/video`;
+
+    const fetchFn: any = (global as any).fetch;
+    const FormDataCtor: any = (global as any).FormData;
+    const BlobCtor: any = (global as any).Blob;
+    const AbortControllerCtor: any = (global as any).AbortController;
+
+    if (!fetchFn || !FormDataCtor || !BlobCtor) {
+      throw new BadRequestException(
+        "Files upload requires Node.js runtime with fetch/FormData/Blob support"
+      );
+    }
+
+    const formData = new FormDataCtor();
+    const blob = new BlobCtor([file.buffer], { type: file.mimetype });
+    formData.append("file", blob, file.originalname);
+
+    const headers: Record<string, string> = {};
+    if (authorizationHeader) {
+      headers["authorization"] = authorizationHeader;
+    }
+
+    const controller = AbortControllerCtor ? new AbortControllerCtor() : undefined;
+    const timeoutMs = parseInt(process.env.FILES_BACKEND_TIMEOUT_MS || "30000", 10); // 30 seconds for video
+    const timeoutId = controller
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : undefined;
+
+    try {
+      const response = await fetchFn(endpoint, {
+        method: "POST",
+        headers,
+        body: formData,
+        signal: controller?.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new BadRequestException(
+          `Files backend returned error: ${response.status} ${errorText}`
+        );
+      }
+
+      const result = await response.json();
+      if (!result?.url || !result?.fileName) {
+        throw new BadRequestException("Files backend did not return valid video data");
+      }
+
+      return { url: result.url, fileName: result.fileName };
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
+  async uploadImages(
+    productId: string,
+    files: Array<{ buffer: Buffer; mimetype: string; originalname: string }>,
+    authorizationHeader?: string
+  ): Promise<ApiResponse<any>> {
+    const product = await this.productRepository.findOne({ where: { id: productId } });
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+
+    const existingCount = await this.productImageRepository.count({
+      where: { product_id: productId },
+    });
+
+    const list = (files || []).slice(0, 5);
+    if (existingCount + list.length > 5) {
+      throw new BadRequestException("Maximum 5 images are allowed per product");
+    }
+
+    const uploaded = await this.uploadProductImagesToFilesBackend(
+      productId,
+      list,
+      authorizationHeader
+    );
+
+    const imagesToSave = uploaded.map((u, idx) =>
+      this.productImageRepository.create({
+        product_id: productId,
+        url: u.url,
+        file_name: u.fileName,
+        sort_order: existingCount + idx + 1,
+      })
+    );
+
+    await this.productImageRepository.save(imagesToSave);
+
+    const shouldSetPrimary =
+      (!product.product_img_url || String(product.product_img_url).trim() === "") &&
+      existingCount === 0;
+
+    if (shouldSetPrimary) {
+      await this.productRepository.update(productId, {
+        product_img_url: imagesToSave[0]?.url,
+      } as any);
+    }
+
+    const freshImages = await this.productImageRepository.find({
+      where: { product_id: productId },
+      order: { sort_order: "ASC" as any },
+    });
+
+    return ResponseHelper.success(
+      {
+        product_id: productId,
+        product_img_url: shouldSetPrimary ? imagesToSave[0]?.url : product.product_img_url,
+        images: freshImages,
+      },
+      "Product images uploaded successfully",
+      "Product",
+      201
+    );
+  }
+
+  async deleteImage(
+    productId: string,
+    imageId: string,
+    authorizationHeader?: string
+  ): Promise<ApiResponse<any>> {
+    const product = await this.productRepository.findOne({ where: { id: productId } });
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+
+    const image = await this.productImageRepository.findOne({
+      where: { id: imageId, product_id: productId },
+    });
+    if (!image) {
+      throw new NotFoundException("Product image not found");
+    }
+
+    const fileName = image.file_name;
+    await this.productImageRepository.remove(image);
+
+    if (fileName) {
+      try {
+        await this.deleteProductImageFromFilesBackend(fileName, authorizationHeader);
+      } catch {
+        // Best-effort cleanup only
+      }
+    }
+
+    const remaining = await this.productImageRepository.find({
+      where: { product_id: productId },
+      order: { sort_order: "ASC" as any },
+    });
+
+    for (let i = 0; i < remaining.length; i++) {
+      const desired = i + 1;
+      if ((remaining[i] as any).sort_order !== desired) {
+        (remaining[i] as any).sort_order = desired;
+      }
+    }
+    if (remaining.length > 0) {
+      await this.productImageRepository.save(remaining);
+    }
+
+    const nextPrimary = remaining?.[0]?.url || null;
+    await this.productRepository.update(productId, {
+      product_img_url: nextPrimary as any,
+    } as any);
+
+    return ResponseHelper.success(
+      {
+        product_id: productId,
+        product_img_url: nextPrimary,
+        images: remaining,
+      },
+      "Product image deleted successfully",
+      "Product",
+      200
+    );
+  }
+
+  async getImages(productId: string): Promise<ApiResponse<any>> {
+    const product = await this.productRepository.findOne({ where: { id: productId } });
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+
+    const images = await this.productImageRepository.find({
+      where: { product_id: productId },
+      order: { sort_order: "ASC" as any },
+    });
+
+    return ResponseHelper.success(
+      {
+        product_id: productId,
+        product_img_url: (product as any).product_img_url || null,
+        images,
+      },
+      "Product images retrieved successfully",
+      "Product",
+      200
+    );
   }
 
   private sanitizeSkuSegment(value: string): string {
@@ -633,7 +983,11 @@ export class ProductsService {
       "categorytitle",
       "brandtitle",
       "currency",
-      "image",
+      "image1",
+      "image2",
+      "image3",
+      "image4",
+      "image5",
     ];
 
     let rows: any[][];
@@ -678,15 +1032,10 @@ export class ProductsService {
       );
     }
 
-    let embeddedImagesByRow = new Map<
-      number,
-      { buffer: Buffer; mimetype: string; originalname: string }
-    >();
-    try {
-      embeddedImagesByRow = await this.extractEmbeddedImagesByRowFromXlsx(file.buffer, 7);
-    } catch {
-      embeddedImagesByRow = new Map();
-    }
+    const embeddedImagesByRow = await this.extractEmbeddedImagesForColumnsByRow(
+      file.buffer,
+      [7, 8, 9, 10, 11]
+    );
 
     type RowInput = {
       rowNumber: number;
@@ -697,8 +1046,8 @@ export class ProductsService {
       categorytitle: string;
       brandtitle: string;
       currency: string;
-      product_img_url?: string;
-      embeddedImage?: { buffer: Buffer; mimetype: string; originalname: string };
+      imageUrls?: string[];
+      embeddedImages?: Array<{ buffer: Buffer; mimetype: string; originalname: string }>;
     };
 
     const failures: Array<{ rowNumber: number; reason: string; rowData?: any }> = [];
@@ -712,19 +1061,37 @@ export class ProductsService {
       const excelRowNumber = i + 1;
       const r = rows[i] || [];
 
-      const isEmptyRow = [r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7]].every(
-        (c) => String(c ?? "").trim() === ""
-      );
+      const isEmptyRow = [
+        r[0],
+        r[1],
+        r[2],
+        r[3],
+        r[4],
+        r[5],
+        r[6],
+        r[7],
+        r[8],
+        r[9],
+        r[10],
+        r[11],
+      ].every((c) => String(c ?? "").trim() === "");
       if (isEmptyRow) {
         continue;
       }
       nonEmptyRows += 1;
 
-      const imageCellRaw = r[7];
-      const imageCellStr = String(imageCellRaw ?? "").trim();
-      const normalizedImageCell = /^\[object\s+object\]$/i.test(imageCellStr)
-        ? ""
-        : imageCellStr;
+      const normalizeCell = (v: any) => {
+        const s = String(v ?? "").trim();
+        return /^\[object\s+object\]$/i.test(s) ? "" : s;
+      };
+
+      const imageUrls = [
+        normalizeCell(r[7]),
+        normalizeCell(r[8]),
+        normalizeCell(r[9]),
+        normalizeCell(r[10]),
+        normalizeCell(r[11]),
+      ].filter((s) => !!s);
 
       const obj: any = {
         title: String(r[0] || "").trim(),
@@ -734,7 +1101,7 @@ export class ProductsService {
         categorytitle: String(r[4] || "").trim(),
         brandtitle: String(r[5] || "").trim(),
         currency: String(r[6] || "").trim(),
-        image: normalizedImageCell,
+        imageUrls,
       };
 
       if (!obj.title) {
@@ -787,10 +1154,12 @@ export class ProductsService {
         categorytitle: obj.categorytitle,
         brandtitle: obj.brandtitle,
         currency: obj.currency,
-        product_img_url: obj.image || undefined,
-        embeddedImage: !obj.image
-          ? embeddedImagesByRow.get(excelRowNumber) || fallbackMediaImage || undefined
-          : undefined,
+        imageUrls: Array.isArray(obj.imageUrls) ? obj.imageUrls.slice(0, 5) : [],
+        embeddedImages:
+          (Array.isArray(obj.imageUrls) && obj.imageUrls.length > 0)
+            ? []
+            : embeddedImagesByRow.get(excelRowNumber) ||
+              (fallbackMediaImage ? [fallbackMediaImage] : []),
       });
     }
 
@@ -832,8 +1201,8 @@ export class ProductsService {
       brand: Brand;
       currency: string;
       skuPrefix: string;
-      product_img_url?: string;
-      embeddedImage?: { buffer: Buffer; mimetype: string; originalname: string };
+      imageUrls?: string[];
+      embeddedImages?: Array<{ buffer: Buffer; mimetype: string; originalname: string }>;
     };
 
     const prepared: PreparedRow[] = [];
@@ -875,8 +1244,8 @@ export class ProductsService {
         brand: b,
         currency: r.currency,
         skuPrefix: `${brandSeg}-${catSeg}`,
-        product_img_url: r.product_img_url,
-        embeddedImage: r.embeddedImage,
+        imageUrls: (r.imageUrls || []).slice(0, 5),
+        embeddedImages: (r.embeddedImages || []).slice(0, 5),
       });
     }
 
@@ -907,7 +1276,9 @@ export class ProductsService {
     const createdSkus: string[] = [];
 
     for (const chunk of chunks) {
-      const hasEmbedded = chunk.some((r) => !!r.embeddedImage && !r.product_img_url);
+      const hasAnyImages = chunk.some(
+        (r) => (r.imageUrls?.length ?? 0) > 0 || (r.embeddedImages?.length ?? 0) > 0
+      );
 
       const entities = chunk.map((r) => ({
         title: r.title,
@@ -918,10 +1289,10 @@ export class ProductsService {
         brand_id: r.brand.id,
         currency: r.currency,
         sku: (r as any).sku,
-        product_img_url: r.product_img_url || null,
+        product_img_url: (r.imageUrls?.[0] as any) || null,
       }));
 
-      if (!hasEmbedded) {
+      if (!hasAnyImages) {
         try {
           await this.productRepository.insert(entities as any);
           createdCount += entities.length;
@@ -962,27 +1333,61 @@ export class ProductsService {
             (res as any)?.identifiers?.[0]?.id ||
             (res as any)?.generatedMaps?.[0]?.id;
 
-          if (
-            insertedId &&
-            row.embeddedImage &&
-            !row.product_img_url
-          ) {
-            try {
-              const url = await this.uploadProductImageToFilesBackend(
-                String(insertedId),
-                row.embeddedImage,
-                authorizationHeader
+          if (insertedId) {
+            const urls = (row.imageUrls || []).filter(Boolean).slice(0, 5);
+            if (urls.length > 0) {
+              const imgs = urls.map((u: string, idx: number) =>
+                this.productImageRepository.create({
+                  product_id: String(insertedId),
+                  url: u,
+                  file_name: this.extractProductsFileNameFromUrl(u) || u,
+                  sort_order: idx + 1,
+                })
               );
+              try {
+                await this.productImageRepository.save(imgs);
+                await this.productRepository.update(
+                  { id: String(insertedId) } as any,
+                  { product_img_url: urls[0] } as any
+                );
+              } catch (e: any) {
+                failures.push({
+                  rowNumber: row.rowNumber,
+                  reason: e?.message || "Failed to save product images",
+                });
+              }
+            } else {
+              const embedded = (row.embeddedImages || []).filter(Boolean).slice(0, 5);
+              if (embedded.length > 0) {
+                try {
+                  const uploaded = await this.uploadProductImagesToFilesBackend(
+                    String(insertedId),
+                    embedded,
+                    authorizationHeader
+                  );
 
-              await this.productRepository.update(
-                { id: String(insertedId) } as any,
-                { product_img_url: url } as any
-              );
-            } catch (e: any) {
-              failures.push({
-                rowNumber: row.rowNumber,
-                reason: e?.message || "Image upload failed (product created without image)",
-              });
+                  const imgs = uploaded.map((u, idx) =>
+                    this.productImageRepository.create({
+                      product_id: String(insertedId),
+                      url: u.url,
+                      file_name: u.fileName,
+                      sort_order: idx + 1,
+                    })
+                  );
+                  await this.productImageRepository.save(imgs);
+                  await this.productRepository.update(
+                    { id: String(insertedId) } as any,
+                    { product_img_url: uploaded[0]?.url || null } as any
+                  );
+                } catch (e: any) {
+                  failures.push({
+                    rowNumber: row.rowNumber,
+                    reason:
+                      e?.message ||
+                      "Image upload failed (product created without image)",
+                  });
+                }
+              }
             }
           }
         } catch (e: any) {
@@ -1033,7 +1438,22 @@ export class ProductsService {
       brand_id,
       currency,
       product_img_url,
+      product_video_url,
       is_active,
+      discount,
+      start_discount_date,
+      end_discount_date,
+      length,
+      width,
+      height,
+      weight,
+      tax_id,
+      supplier_id,
+      warehouse_id,
+      total_price,
+      variants,
+      customer_groups,
+      bulk_prices,
     } = createProductDto;
 
     const category = await this.categoryRepository.findOne({
@@ -1062,14 +1482,82 @@ export class ProductsService {
       currency,
       sku,
       product_img_url,
+      product_video_url,
+      discount: discount || 0,
+      start_discount_date,
+      end_discount_date,
+      length,
+      width,
+      height,
+      weight,
+      tax_id,
+      supplier_id,
+      warehouse_id,
+      total_price,
       ...(typeof is_active === "boolean" ? { is_active } : {}),
     });
 
     const savedProduct = await this.productRepository.save(product);
 
+    // Save variants if provided
+    if (variants && variants.length > 0) {
+      // Validate variant types exist
+      const variantTypeIds = variants.map(v => v.vtype_id);
+      const variantTypes = await this.variantTypeRepository.findByIds(variantTypeIds);
+      
+      if (variantTypes.length !== variantTypeIds.length) {
+        throw new BadRequestException("One or more variant types are invalid");
+      }
+
+      // Create and save variants
+      const variantEntities = variants.map(variant => 
+        this.variantRepository.create({
+          vtype_id: variant.vtype_id,
+          value: variant.value,
+          product_id: savedProduct.id,
+        })
+      );
+
+      await this.variantRepository.save(variantEntities);
+    }
+
+    // Save customer visibility groups if provided
+    if (customer_groups && customer_groups.cvg_ids && customer_groups.cvg_ids.length > 0) {
+      // Validate CVG IDs exist
+      const cvgGroups = await this.customerVisibilityGroupRepository.findByIds(customer_groups.cvg_ids);
+      
+      if (cvgGroups.length !== customer_groups.cvg_ids.length) {
+        throw new BadRequestException("One or more customer visibility groups are invalid");
+      }
+
+      // Create and save CVG product relationships
+      const cvgProductEntities = customer_groups.cvg_ids.map(cvg_id => 
+        this.cvgProductRepository.create({
+          cvg_id,
+          product_id: savedProduct.id,
+        })
+      );
+
+      await this.cvgProductRepository.save(cvgProductEntities);
+    }
+
+    // Save bulk prices if provided
+    if (bulk_prices && bulk_prices.length > 0) {
+      // Create and save bulk prices
+      const bulkPriceEntities = bulk_prices.map(bulkPrice => 
+        this.bulkPriceRepository.create({
+          quantity: bulkPrice.quantity,
+          price_per_product: bulkPrice.price_per_product,
+          product_id: savedProduct.id,
+        })
+      );
+
+      await this.bulkPriceRepository.save(bulkPriceEntities);
+    }
+
     const productWithRelations = await this.productRepository.findOne({
       where: { id: savedProduct.id },
-      relations: ["category", "brand"],
+      relations: ["category", "brand", "variants", "variants.variantType", "cvgProducts", "cvgProducts.customerVisibilityGroup", "bulkPrices"],
     });
 
     return ResponseHelper.success(
@@ -1103,6 +1591,20 @@ export class ProductsService {
       currency,
       product_img_url,
       is_active,
+      discount,
+      start_discount_date,
+      end_discount_date,
+      length,
+      width,
+      height,
+      weight,
+      tax_id,
+      supplier_id,
+      warehouse_id,
+      total_price,
+      variants,
+      customer_groups,
+      bulk_prices,
     } = updateProductDto;
 
     const product = await this.productRepository.findOne({ where: { id } });
@@ -1124,9 +1626,7 @@ export class ProductsService {
       throw new BadRequestException("Brand not found");
     }
 
-    const updateData: Partial<Omit<UpdateProductDto, "id">> & {
-      product_img_url?: string;
-    } = {
+    const updateData: any = {
       title,
       description,
       price,
@@ -1134,6 +1634,17 @@ export class ProductsService {
       category_id,
       brand_id,
       currency,
+      discount,
+      start_discount_date,
+      end_discount_date,
+      length,
+      width,
+      height,
+      weight,
+      tax_id,
+      supplier_id,
+      warehouse_id,
+      total_price,
     };
 
     if (typeof is_active === "boolean") {
@@ -1150,7 +1661,92 @@ export class ProductsService {
       updateData.product_img_url = nextUrl;
     }
 
+    // Handle video deletion
+    const previousVideoUrl = (product as any).product_video_url as string | undefined;
+    const previousVideoFileName = previousVideoUrl
+      ? this.extractProductsFileNameFromUrl(previousVideoUrl)
+      : null;
+
+    // Check if video should be deleted (set to null, empty, or undefined)
+    if (previousVideoUrl && (!updateData.product_video_url || updateData.product_video_url === "")) {
+      updateData.product_video_url = null;
+    }
+
     await this.productRepository.update(id, updateData);
+
+    // Handle variants update
+    if (variants !== undefined) {
+      // Remove existing variants for this product
+      await this.variantRepository.delete({ product_id: id });
+      
+      // Add new variants if provided
+      if (variants.length > 0) {
+        // Validate variant types exist
+        const variantTypeIds = variants.map(v => v.vtype_id);
+        const variantTypes = await this.variantTypeRepository.findByIds(variantTypeIds);
+        
+        if (variantTypes.length !== variantTypeIds.length) {
+          throw new BadRequestException("One or more variant types are invalid");
+        }
+
+        // Create and save new variants
+        const variantEntities = variants.map(variant => 
+          this.variantRepository.create({
+            vtype_id: variant.vtype_id,
+            value: variant.value,
+            product_id: id,
+          })
+        );
+
+        await this.variantRepository.save(variantEntities);
+      }
+    }
+
+    // Handle customer visibility groups update
+    if (customer_groups !== undefined) {
+      // Remove existing CVG relationships for this product
+      await this.cvgProductRepository.delete({ product_id: id });
+      
+      // Add new CVG relationships if provided
+      if (customer_groups.cvg_ids && customer_groups.cvg_ids.length > 0) {
+        // Validate CVG IDs exist
+        const cvgGroups = await this.customerVisibilityGroupRepository.findByIds(customer_groups.cvg_ids);
+        
+        if (cvgGroups.length !== customer_groups.cvg_ids.length) {
+          throw new BadRequestException("One or more customer visibility groups are invalid");
+        }
+
+        // Create and save new CVG product relationships
+        const cvgProductEntities = customer_groups.cvg_ids.map(cvg_id => 
+          this.cvgProductRepository.create({
+            cvg_id,
+            product_id: id,
+          })
+        );
+
+        await this.cvgProductRepository.save(cvgProductEntities);
+      }
+    }
+
+    // Handle bulk prices update
+    if (bulk_prices !== undefined) {
+      // Remove existing bulk prices for this product
+      await this.bulkPriceRepository.delete({ product_id: id });
+      
+      // Add new bulk prices if provided
+      if (bulk_prices.length > 0) {
+        // Create and save new bulk prices
+        const bulkPriceEntities = bulk_prices.map(bulkPrice => 
+          this.bulkPriceRepository.create({
+            quantity: bulkPrice.quantity,
+            price_per_product: bulkPrice.price_per_product,
+            product_id: id,
+          })
+        );
+
+        await this.bulkPriceRepository.save(bulkPriceEntities);
+      }
+    }
 
     if (
       typeof nextUrl === "string" &&
@@ -1166,9 +1762,18 @@ export class ProductsService {
       }
     }
 
+    // Delete video file if it was removed
+    if (previousVideoFileName && updateData.product_video_url === null) {
+      try {
+        await this.deleteProductVideoFromFilesBackend(previousVideoFileName, authHeader);
+      } catch {
+        // Best-effort cleanup only
+      }
+    }
+
     const updatedProduct = await this.productRepository.findOne({
       where: { id },
-      relations: ["category", "brand"],
+      relations: ["category", "brand", "variants", "variants.variantType", "cvgProducts", "cvgProducts.customerVisibilityGroup", "bulkPrices"],
     });
 
     return ResponseHelper.success(
@@ -1182,11 +1787,17 @@ export class ProductsService {
   async getById(id: string): Promise<ApiResponse<Product>> {
     const product = await this.productRepository.findOne({
       where: { id },
-      relations: ["category", "brand"],
+      relations: ["category", "brand", "images"],
     });
 
     if (!product) {
       throw new NotFoundException("Product not found");
+    }
+
+    if (Array.isArray((product as any).images)) {
+      (product as any).images = (product as any).images.sort(
+        (a: any, b: any) => Number(a?.sort_order ?? 0) - Number(b?.sort_order ?? 0)
+      );
     }
 
     return ResponseHelper.success(product, "Product found", "Product", 200);
@@ -1251,24 +1862,40 @@ export class ProductsService {
   ): Promise<ApiResponse<null>> {
     const { id } = deleteProductDto;
 
-    const product = await this.productRepository.findOne({ where: { id } });
+    const product = await this.productRepository.findOne({
+      where: { id },
+      relations: ["images"],
+    });
     if (!product) {
       throw new NotFoundException("Product not found");
     }
 
-    const previousUrl = (product as any).product_img_url as string | undefined;
-    const previousFileName = previousUrl
-      ? this.extractProductsFileNameFromUrl(previousUrl)
+    const images = Array.isArray((product as any).images) ? (product as any).images : [];
+    const imageFileNames = images
+      .map((i: any) => String(i?.file_name ?? "").trim())
+      .filter(Boolean);
+
+    // Get video file name if exists
+    const videoUrl = (product as any).product_video_url as string | undefined;
+    const videoFileName = videoUrl
+      ? this.extractProductsFileNameFromUrl(videoUrl)
       : null;
 
     await this.productRepository.remove(product);
 
-    if (previousFileName) {
+    // Delete image files
+    for (const fn of imageFileNames) {
       try {
-        await this.deleteProductImageFromFilesBackend(
-          previousFileName,
-          authorizationHeader
-        );
+        await this.deleteProductImageFromFilesBackend(fn, authorizationHeader);
+      } catch {
+        // Best-effort cleanup only
+      }
+    }
+
+    // Delete video file if exists
+    if (videoFileName) {
+      try {
+        await this.deleteProductVideoFromFilesBackend(videoFileName, authorizationHeader);
       } catch {
         // Best-effort cleanup only
       }
@@ -1279,6 +1906,39 @@ export class ProductsService {
       "Product deleted successfully",
       "Product",
       200
+    );
+  }
+
+  async uploadVideo(
+    productId: string,
+    file: { buffer: Buffer; mimetype: string; originalname: string },
+    authorizationHeader?: string
+  ): Promise<ApiResponse<{ url: string; fileName: string }>> {
+    const product = await this.productRepository.findOne({ where: { id: productId } });
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+
+    const saved = await this.uploadProductVideoToFilesBackend(
+      productId,
+      file,
+      authorizationHeader
+    );
+    
+    if (!saved?.url) {
+      throw new BadRequestException("Files backend did not return a valid video URL");
+    }
+
+    // Update product_video_url in database
+    await this.productRepository.update(productId, {
+      product_video_url: saved.url,
+    });
+
+    return ResponseHelper.success(
+      { url: saved.url, fileName: saved.fileName },
+      "Product video uploaded successfully",
+      "Product",
+      201
     );
   }
 }

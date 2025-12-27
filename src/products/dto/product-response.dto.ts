@@ -28,6 +28,100 @@ export class BrandDto {
   name: string;
 }
 
+export class ProductImageDto {
+  @ApiProperty({
+    description: "Product image ID",
+    example: "123e4567-e89b-12d3-a456-426614174000",
+  })
+  id: string;
+
+  @ApiProperty({
+    description: "Public image URL",
+    example: "http://localhost:3003/public/products/uuid-1700000000-abcd1234.webp",
+  })
+  url: string;
+
+  @ApiProperty({
+    description: "Stored file name",
+    example: "uuid-1700000000-abcd1234.webp",
+  })
+  file_name: string;
+
+  @ApiProperty({
+    description: "Sort order (1..5)",
+    example: 1,
+  })
+  sort_order: number;
+}
+
+export class TaxDto {
+  @ApiProperty({
+    description: "Tax ID",
+    example: "123e4567-e89b-12d3-a456-426614174000",
+  })
+  id: string;
+
+  @ApiProperty({
+    description: "Tax title",
+    example: "VAT",
+  })
+  title: string;
+
+  @ApiProperty({
+    description: "Tax rate",
+    example: 15.5,
+  })
+  rate: number;
+}
+
+export class SupplierDto {
+  @ApiProperty({
+    description: "Supplier ID",
+    example: "123e4567-e89b-12d3-a456-426614174000",
+  })
+  id: string;
+
+  @ApiProperty({
+    description: "Supplier name",
+    example: "ABC Suppliers",
+  })
+  supplier_name: string;
+
+  @ApiProperty({
+    description: "Supplier email",
+    example: "contact@abc.com",
+    nullable: true,
+  })
+  email: string | null;
+
+  @ApiProperty({
+    description: "Supplier phone",
+    example: "+1234567890",
+    nullable: true,
+  })
+  phone: string | null;
+}
+
+export class WarehouseDto {
+  @ApiProperty({
+    description: "Warehouse ID",
+    example: "123e4567-e89b-12d3-a456-426614174000",
+  })
+  id: string;
+
+  @ApiProperty({
+    description: "Warehouse name",
+    example: "Main Warehouse",
+  })
+  name: string;
+
+  @ApiProperty({
+    description: "Warehouse code",
+    example: "WH001",
+  })
+  code: string;
+}
+
 export class ProductDto {
   @ApiProperty({
     description: "Product ID",
@@ -134,6 +228,95 @@ export class ProductDto {
     type: BrandDto,
   })
   brand: BrandDto;
+
+  @ApiProperty({
+    description: "Product images",
+    type: [ProductImageDto],
+    required: false,
+  })
+  images?: ProductImageDto[];
+
+  @ApiProperty({
+    description: "Product video URL",
+    example: "https://example.com/videos/product.mp4",
+    nullable: true,
+  })
+  product_video_url: string | null;
+
+  @ApiProperty({
+    description: "Discount percentage",
+    example: 10.50,
+  })
+  discount: number;
+
+  @ApiProperty({
+    description: "Discount start date",
+    example: "2024-01-01T00:00:00Z",
+    nullable: true,
+  })
+  start_discount_date: Date | null;
+
+  @ApiProperty({
+    description: "Discount end date",
+    example: "2024-12-31T23:59:59Z",
+    nullable: true,
+  })
+  end_discount_date: Date | null;
+
+  @ApiProperty({
+    description: "Product length",
+    example: 25.50,
+    nullable: true,
+  })
+  length: number | null;
+
+  @ApiProperty({
+    description: "Product width",
+    example: 15.75,
+    nullable: true,
+  })
+  width: number | null;
+
+  @ApiProperty({
+    description: "Product height",
+    example: 8.25,
+    nullable: true,
+  })
+  height: number | null;
+
+  @ApiProperty({
+    description: "Product weight",
+    example: 2.5,
+    nullable: true,
+  })
+  weight: number | null;
+
+  @ApiProperty({
+    description: "Total price after tax",
+    example: 219.99,
+  })
+  total_price: number;
+
+  @ApiProperty({
+    description: "Product tax",
+    type: TaxDto,
+    nullable: true,
+  })
+  tax?: TaxDto;
+
+  @ApiProperty({
+    description: "Product supplier",
+    type: SupplierDto,
+    nullable: true,
+  })
+  supplier?: SupplierDto;
+
+  @ApiProperty({
+    description: "Product warehouse",
+    type: WarehouseDto,
+    nullable: true,
+  })
+  warehouse?: WarehouseDto;
 }
 
 export class ProductResponseDto {

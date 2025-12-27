@@ -184,29 +184,69 @@ export class AuthService {
 
   async refresh(refreshDto: RefreshDto): Promise<ApiResponse<any>> {
     const { refresh_token } = refreshDto;
+    const normalizedRefreshToken = String(refresh_token ?? "")
+      .trim()
+      .replace(/^Bearer\s+/i, "");
+
+    if (!normalizedRefreshToken) {
+      throw new UnauthorizedException("Invalid refresh token");
+    }
 
     try {
       // Verify refresh token
-      const payload = this.jwtService.verify(refresh_token);
+      const payload = this.jwtService.verify(normalizedRefreshToken);
+      const userId = String((payload as any)?.sub ?? "");
+
+      if (!userId) {
+        throw new UnauthorizedException("Invalid refresh token");
+      }
 
       // Find token record in database
-      const tokenRecord = await this.tokenRepository.findOne({
+      let tokenRecord = await this.tokenRepository.findOne({
         where: {
-          refresh_token,
-          userId: payload.sub,
+          refresh_token: normalizedRefreshToken,
+          userId,
           revoked: false,
         },
         relations: ["user"],
       });
 
       if (!tokenRecord) {
+        // Fallback: some clients may send the correct refresh token but the sub might not match
+        // due to historical data inconsistencies. Still keep it secure by verifying JWT above.
+        const tokenRecordByRefresh = await this.tokenRepository.findOne({
+          where: {
+            refresh_token: normalizedRefreshToken,
+            revoked: false,
+          },
+          relations: ["user"],
+        });
+
+        if (!tokenRecordByRefresh) {
+          this.logger.warn(
+            `Refresh failed: token record not found for userId=${userId}`
+          );
+          throw new UnauthorizedException("Invalid refresh token");
+        }
+
+        if (String(tokenRecordByRefresh.userId) !== userId) {
+          this.logger.warn(
+            `Refresh failed: token belongs to different user (expected=${userId}, actual=${tokenRecordByRefresh.userId})`
+          );
+          throw new UnauthorizedException("Invalid refresh token");
+        }
+
+        // Use fallback record
+        tokenRecord = tokenRecordByRefresh;
+      }
+
+      if (!tokenRecord) {
         throw new UnauthorizedException("Invalid refresh token");
       }
 
-      // Check if token is expired
-      if (new Date() > tokenRecord.expires_at) {
-        throw new UnauthorizedException("Token expired");
-      }
+      // Note:
+      // tokenRecord.expires_at tracks the ACCESS token expiry in this codebase.
+      // Refresh token expiry is already enforced by jwtService.verify(refresh_token).
 
       // Generate new access token
       const newPayload = { sub: payload.sub, email: payload.email };
@@ -250,6 +290,14 @@ export class AuthService {
         "Authentication"
       );
     } catch (error) {
+      const name = String((error as any)?.name ?? "");
+      const message = String((error as any)?.message ?? "");
+      if (name) {
+        this.logger.warn(`Refresh error: ${name}${message ? ` - ${message}` : ""}`);
+      }
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
       throw new UnauthorizedException("Invalid refresh token");
     }
   }

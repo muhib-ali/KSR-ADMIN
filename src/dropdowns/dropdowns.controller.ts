@@ -11,6 +11,10 @@ import {
   ModulesDropdownResponseDto,
   CategoriesDropdownResponseDto,
   BrandsDropdownResponseDto,
+  TaxesDropdownResponseDto,
+  SuppliersDropdownResponseDto,
+  WarehousesDropdownResponseDto,
+  VariantTypesDropdownResponseDto,
 } from "./dto/dropdown-response.dto";
 
 @ApiTags("Dropdowns")
@@ -65,5 +69,53 @@ export class DropdownsController {
   @ApiResponse({ status: 401, description: "Unauthorized" })
   async getAllBrands() {
     return this.dropdownsService.getAllBrands();
+  }
+
+  @Get("getAllTaxes")
+  @ApiOperation({ summary: "Get all active taxes for dropdown" })
+  @ApiResponse({
+    status: 200,
+    description: "Taxes dropdown data retrieved successfully",
+    type: TaxesDropdownResponseDto,
+  })
+  @ApiResponse({ status: 401, description: "Unauthorized" })
+  async getAllTaxes() {
+    return this.dropdownsService.getAllTaxes();
+  }
+
+  @Get("getAllSuppliers")
+  @ApiOperation({ summary: "Get all active suppliers for dropdown" })
+  @ApiResponse({
+    status: 200,
+    description: "Suppliers dropdown data retrieved successfully",
+    type: SuppliersDropdownResponseDto,
+  })
+  @ApiResponse({ status: 401, description: "Unauthorized" })
+  async getAllSuppliers() {
+    return this.dropdownsService.getAllSuppliers();
+  }
+
+  @Get("getAllWarehouses")
+  @ApiOperation({ summary: "Get all active warehouses for dropdown" })
+  @ApiResponse({
+    status: 200,
+    description: "Warehouses dropdown data retrieved successfully",
+    type: WarehousesDropdownResponseDto,
+  })
+  @ApiResponse({ status: 401, description: "Unauthorized" })
+  async getAllWarehouses() {
+    return this.dropdownsService.getAllWarehouses();
+  }
+
+  @Get("getAllVariantTypes")
+  @ApiOperation({ summary: "Get all active variant types for dropdown" })
+  @ApiResponse({
+    status: 200,
+    description: "Variant types dropdown data retrieved successfully",
+    type: VariantTypesDropdownResponseDto,
+  })
+  @ApiResponse({ status: 401, description: "Unauthorized" })
+  async getAllVariantTypes() {
+    return this.dropdownsService.getAllVariantTypes();
   }
 }
