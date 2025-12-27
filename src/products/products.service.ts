@@ -1557,7 +1557,7 @@ export class ProductsService {
 
     const productWithRelations = await this.productRepository.findOne({
       where: { id: savedProduct.id },
-      relations: ["category", "brand", "variants", "variants.variantType", "cvgProducts", "cvgProducts.customerVisibilityGroup", "bulkPrices"],
+      relations: ["category", "brand", "cvgProducts", "cvgProducts.customerVisibilityGroup", "bulkPrices"],
     });
 
     return ResponseHelper.success(

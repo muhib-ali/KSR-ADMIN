@@ -5,8 +5,8 @@ import { Product } from "./product.entity";
 
 @Entity("variants")
 export class Variant extends BaseAuditColumns {
-  @Column({ type: "int" })
-  vtype_id: number;
+  @Column({ type: "uuid" })
+  vtype_id: string;
 
   @Column({ type: "varchar", length: 100 })
   value: string;

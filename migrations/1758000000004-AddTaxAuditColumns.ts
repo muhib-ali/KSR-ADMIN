@@ -30,10 +30,10 @@ export class AddTaxAuditColumns1758000000004 implements MigrationInterface {
         columns: [
           {
             name: "id",
-            type: "int",
+            type: "uuid",
             isPrimary: true,
-            isGenerated: true,
-            generationStrategy: "increment",
+            generationStrategy: "uuid",
+            default: "uuid_generate_v4()",
           },
           {
             name: "name",
@@ -71,7 +71,7 @@ export class AddTaxAuditColumns1758000000004 implements MigrationInterface {
           },
           {
             name: "vtype_id",
-            type: "int",
+            type: "uuid",
           },
           {
             name: "value",

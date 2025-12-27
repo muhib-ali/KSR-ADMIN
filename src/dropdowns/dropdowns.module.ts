@@ -10,10 +10,11 @@ import { Tax } from "../entities/tax.entity";
 import { Supplier } from "../entities/supplier.entity";
 import { Warehouse } from "../entities/warehouse.entity";
 import { VariantType } from "../entities/variant-type.entity";
+import { CustomerVisibilityGroup } from "../entities/customer-visibility-group.entity";
 import { AuthModule } from "../auth/auth.module";
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Role, ModuleEntity, Category, Brand, Tax, Supplier, Warehouse, VariantType]), AuthModule],
+  imports: [TypeOrmModule.forFeature([Role, ModuleEntity, Category, Brand, Tax, Supplier, Warehouse, VariantType, CustomerVisibilityGroup]), AuthModule],
   controllers: [DropdownsController],
   providers: [DropdownsService],
   exports: [DropdownsService],

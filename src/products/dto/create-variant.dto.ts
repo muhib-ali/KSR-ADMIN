@@ -9,13 +9,12 @@ import { Type } from "class-transformer";
 
 export class CreateVariantDto {
   @ApiProperty({
-    description: "Variant type ID",
-    example: 1,
+    description: "Variant type ID (UUID)",
+    example: "123e4567-e89b-12d3-a456-426614174000",
   })
-  @Type(() => Number)
-  @IsNumber()
+  @IsUUID()
   @IsNotEmpty()
-  vtype_id: number;
+  vtype_id: string;
 
   @ApiProperty({
     description: "Variant value",

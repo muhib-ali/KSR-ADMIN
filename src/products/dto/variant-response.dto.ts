@@ -9,9 +9,9 @@ export class VariantResponseDto {
 
   @ApiProperty({
     description: "Variant type ID",
-    example: 1,
+    example: "123e4567-e89b-12d3-a456-426614174000",
   })
-  vtype_id: number;
+  vtype_id: string;
 
   @ApiProperty({
     description: "Variant value",
@@ -33,7 +33,7 @@ export class VariantResponseDto {
     }
   })
   variantType?: {
-    id: number;
+    id: string;
     name: string;
   };
 }

@@ -142,7 +142,7 @@ export class VariantTypesService {
 
     // Check if there are any variants using this variant type
     const variantCount = await this.variantRepository.count({
-      where: { vtype_id: parseInt(id) },
+      where: { vtype_id: id },
     });
 
     if (variantCount > 0) {

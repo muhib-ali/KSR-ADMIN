@@ -78,6 +78,14 @@ export class VariantTypesDropdownDataDto {
   variantTypesDropdown: DropdownItemDto[];
 }
 
+export class CustomerVisibilityGroupsDropdownDataDto {
+  @ApiProperty({
+    type: [DropdownItemDto],
+    description: "Array of customer visibility groups for dropdown",
+  })
+  customerVisibilityGroupsDropdown: DropdownItemDto[];
+}
+
 export class RolesDropdownResponseDto {
   @ApiProperty({ example: 200 })
   statusCode: number;
@@ -212,4 +220,21 @@ export class VariantTypesDropdownResponseDto {
 
   @ApiProperty({ type: VariantTypesDropdownDataDto })
   data: VariantTypesDropdownDataDto;
+}
+
+export class CustomerVisibilityGroupsDropdownResponseDto {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+
+  @ApiProperty({ example: true })
+  status: boolean;
+
+  @ApiProperty({ example: "Customer visibility groups dropdown data retrieved successfully" })
+  message: string;
+
+  @ApiProperty({ example: "Dropdowns" })
+  heading: string;
+
+  @ApiProperty({ type: CustomerVisibilityGroupsDropdownDataDto })
+  data: CustomerVisibilityGroupsDropdownDataDto;
 }

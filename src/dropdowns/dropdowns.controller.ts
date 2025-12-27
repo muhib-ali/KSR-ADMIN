@@ -15,6 +15,7 @@ import {
   SuppliersDropdownResponseDto,
   WarehousesDropdownResponseDto,
   VariantTypesDropdownResponseDto,
+  CustomerVisibilityGroupsDropdownResponseDto,
 } from "./dto/dropdown-response.dto";
 
 @ApiTags("Dropdowns")
@@ -117,5 +118,17 @@ export class DropdownsController {
   @ApiResponse({ status: 401, description: "Unauthorized" })
   async getAllVariantTypes() {
     return this.dropdownsService.getAllVariantTypes();
+  }
+
+  @Get("getAllCustomerVisibilityGroups")
+  @ApiOperation({ summary: "Get all active customer visibility groups for dropdown" })
+  @ApiResponse({
+    status: 200,
+    description: "Customer visibility groups dropdown data retrieved successfully",
+    type: CustomerVisibilityGroupsDropdownResponseDto,
+  })
+  @ApiResponse({ status: 401, description: "Unauthorized" })
+  async getAllCustomerVisibilityGroups() {
+    return this.dropdownsService.getAllCustomerVisibilityGroups();
   }
 }

@@ -156,6 +156,12 @@ async function seed() {
         slug:"warehouses",
         description:"Manage warehouses",
         is_active:true
+      },
+      {
+        title:"Variant Types",
+        slug:"variant-types",
+        description:"Manage variant types",
+        is_active:true
       }
     ];
 
@@ -223,8 +229,31 @@ async function seed() {
         title: "Get All Warehouses",
         description: "Get all warehouses for dropdown",
       }, 
-      
-      // this record will insert for dropdowns module only
+      {
+        slug: "getAllVariantTypes",
+        title: "Get All Variant Types",
+        description: "Get all variant types for dropdown",
+      }, // this record will insert for dropdowns module only
+      {
+        slug: "create",
+        title: "Create",
+        description: "Create variant type",
+      }, // this record will insert for variant-types module only
+      {
+        slug: "update",
+        title: "Update",
+        description: "Update variant type",
+      }, // this record will insert for variant-types module only
+      {
+        slug: "delete",
+        title: "Delete",
+        description: "Delete variant type",
+      }, // this record will insert for variant-types module only
+      {
+        slug: "getAllCustomerVisibilityGroups",
+        title: "Get All Customer Visibility Groups",
+        description: "Get all customer visibility groups for dropdown",
+      }, // this record will insert for dropdowns module only
       { slug: "getAll", title: "Get All", description: "List all" },
       { slug: "create", title: "Create", description: "Create" },
       { slug: "update", title: "Update", description: "Update" },
@@ -250,10 +279,23 @@ async function seed() {
             permDef.slug === "getAllBrands" ||
             permDef.slug === "getAllTaxes" ||
             permDef.slug === "getAllSuppliers" ||
-            permDef.slug === "getAllWarehouses") &&
+            permDef.slug === "getAllWarehouses" ||
+            permDef.slug === "getAllVariantTypes" ||
+            permDef.slug === "getAllCustomerVisibilityGroups") &&
           module.slug !== "dropdowns"
         ) {
           continue; // Skip these permissions for non-dropdowns modules
+        }
+
+        // Skip variant-types specific permissions for non-variant-types modules
+        if (
+          (permDef.slug === "create" ||
+            permDef.slug === "update" ||
+            permDef.slug === "delete") &&
+          permDef.description.includes("variant type") &&
+          module.slug !== "variant-types"
+        ) {
+          continue; // Skip these permissions for non-variant-types modules
         }
 
         // For dropdowns module, only allow specific permissions
@@ -265,9 +307,19 @@ async function seed() {
           permDef.slug !== "getAllBrands" &&
           permDef.slug !== "getAllTaxes" &&
           permDef.slug !== "getAllSuppliers" &&
-          permDef.slug !== "getAllWarehouses"
+          permDef.slug !== "getAllWarehouses" &&
+          permDef.slug !== "getAllVariantTypes" &&
+          permDef.slug !== "getAllCustomerVisibilityGroups"
         ) {
           continue; // Only allow specific permissions for dropdowns module
+        }
+
+        // For variant-types module, only allow variant-type specific permissions
+        if (
+          module.slug === "variant-types" &&
+          !permDef.description.includes("variant type")
+        ) {
+          continue; // Only allow variant-type specific permissions for variant-types module
         }
 
         const permissionData = {
@@ -341,6 +393,10 @@ async function seed() {
         "getAllModules",
         "getAllCategories",
         "getAllBrands",
+        "getAllVariantTypes",
+        "getAllCustomerVisibilityGroups",
+        "create", // For variant-types create
+        "delete", // For variant-types delete
       ];
 
       for (const permission of permissions) {

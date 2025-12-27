@@ -9,6 +9,7 @@ import { Tax } from "../entities/tax.entity";
 import { Supplier } from "../entities/supplier.entity";
 import { Warehouse } from "../entities/warehouse.entity";
 import { VariantType } from "../entities/variant-type.entity";
+import { CustomerVisibilityGroup } from "../entities/customer-visibility-group.entity";
 import { ResponseHelper } from "../common/helpers/response.helper";
 import { ApiResponse } from "../common/interfaces/api-response.interface";
 
@@ -30,7 +31,9 @@ export class DropdownsService {
     @InjectRepository(Warehouse)
     private warehouseRepository: Repository<Warehouse>,
     @InjectRepository(VariantType)
-    private variantTypeRepository: Repository<VariantType>
+    private variantTypeRepository: Repository<VariantType>,
+    @InjectRepository(CustomerVisibilityGroup)
+    private customerVisibilityGroupRepository: Repository<CustomerVisibilityGroup>
   ) {}
 
   async getAllRoles(): Promise<ApiResponse<any>> {
@@ -181,6 +184,25 @@ export class DropdownsService {
     return ResponseHelper.success(
       { variantTypesDropdown },
       "Variant types dropdown data retrieved successfully",
+      "Dropdowns"
+    );
+  }
+
+  async getAllCustomerVisibilityGroups(): Promise<ApiResponse<any>> {
+    const customerVisibilityGroups = await this.customerVisibilityGroupRepository.find({
+      where: { is_active: true },
+      select: ["id", "type"],
+      order: { type: "ASC" },
+    });
+
+    const customerVisibilityGroupsDropdown = customerVisibilityGroups.map((customerVisibilityGroup) => ({
+      label: customerVisibilityGroup.type,
+      value: customerVisibilityGroup.id,
+    }));
+
+    return ResponseHelper.success(
+      { customerVisibilityGroupsDropdown },
+      "Customer visibility groups dropdown data retrieved successfully",
       "Dropdowns"
     );
   }
