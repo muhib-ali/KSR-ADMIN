@@ -1,7 +1,7 @@
 import {
   IsString,
   IsNotEmpty,
-  IsNumber,
+  IsOptional,
   IsUUID,
 } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
@@ -25,10 +25,11 @@ export class CreateVariantDto {
   value: string;
 
   @ApiProperty({
-    description: "Product ID (UUID)",
+    description: "Product ID (UUID) - Optional for create operation, will be set by backend",
     example: "123e4567-e89b-12d3-a456-426614174000",
+    required: false,
   })
   @IsUUID()
-  @IsNotEmpty()
-  product_id: string;
+  @IsOptional()
+  product_id?: string;
 }

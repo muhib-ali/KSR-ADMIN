@@ -548,6 +548,80 @@ export class ProductsService {
     return first;
   }
 
+  async uploadFeaturedImage(
+    productId: string,
+    file: { buffer: Buffer; mimetype: string; originalname: string },
+    authorizationHeader?: string
+  ): Promise<ApiResponse<{ url: string; fileName: string }>> {
+    const product = await this.productRepository.findOne({ where: { id: productId } });
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+
+    // Validate file type
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.mimetype)) {
+      throw new BadRequestException("Only JPEG, PNG, and WebP images are allowed");
+    }
+
+    // Validate file size (5MB)
+    const maxSize = 5 * 1024 * 1024;
+    if (file.buffer.length > maxSize) {
+      throw new BadRequestException("Image size exceeds 5MB limit");
+    }
+
+    // Upload to files backend
+    const imageUrl = await this.uploadProductImageToFilesBackend(
+      productId,
+      file,
+      authorizationHeader
+    );
+
+    console.log(`[uploadFeaturedImage] Product ID: ${productId}, Image URL: ${imageUrl}`);
+
+    // Update product_img_url using save method for better TypeORM handling
+    try {
+      // First, get the product entity
+      const productToUpdate = await this.productRepository.findOne({ where: { id: productId } });
+      if (!productToUpdate) {
+        throw new NotFoundException("Product not found");
+      }
+
+      // Update the product_img_url field
+      productToUpdate.product_img_url = imageUrl;
+      
+      // Save the updated product (TypeORM will detect the change and update only this field)
+      const savedProduct = await this.productRepository.save(productToUpdate);
+      
+      console.log(`[uploadFeaturedImage] Product saved successfully`);
+      console.log(`[uploadFeaturedImage] Saved product_img_url:`, (savedProduct as any)?.product_img_url);
+
+      // Verify the update by fetching the product again
+      const verifiedProduct = await this.productRepository.findOne({ where: { id: productId } });
+      console.log(`[uploadFeaturedImage] Verified product_img_url:`, (verifiedProduct as any)?.product_img_url);
+
+      if (!verifiedProduct) {
+        throw new NotFoundException("Product not found after save");
+      }
+
+      const finalUrl = (verifiedProduct as any)?.product_img_url;
+      if (finalUrl !== imageUrl) {
+        console.error(`[uploadFeaturedImage] WARNING: URL mismatch! Expected: ${imageUrl}, Got: ${finalUrl}`);
+        throw new BadRequestException("Failed to update product_img_url in database");
+      }
+    } catch (error: any) {
+      console.error(`[uploadFeaturedImage] Error updating product:`, error);
+      throw error;
+    }
+
+    return ResponseHelper.success(
+      { url: imageUrl, fileName: file.originalname },
+      "Featured image uploaded successfully",
+      "Product",
+      201
+    );
+  }
+
   private async uploadProductImagesToFilesBackend(
     productId: string,
     files: Array<{ buffer: Buffer; mimetype: string; originalname: string }>,
@@ -673,7 +747,7 @@ export class ProductsService {
 
     const formData = new FormDataCtor();
     const blob = new BlobCtor([file.buffer], { type: file.mimetype });
-    formData.append("file", blob, file.originalname);
+    formData.append("video", blob, file.originalname); // Changed from "file" to "video" to match KSR-FILES backend
 
     const headers: Record<string, string> = {};
     if (authorizationHeader) {
@@ -728,9 +802,9 @@ export class ProductsService {
       where: { product_id: productId },
     });
 
-    const list = (files || []).slice(0, 5);
-    if (existingCount + list.length > 5) {
-      throw new BadRequestException("Maximum 5 images are allowed per product");
+    const list = (files || []).slice(0, 4); // Max 4 gallery images (featured image is separate)
+    if (existingCount + list.length > 4) {
+      throw new BadRequestException("Maximum 4 gallery images are allowed per product (featured image is separate)");
     }
 
     const uploaded = await this.uploadProductImagesToFilesBackend(
@@ -750,15 +824,8 @@ export class ProductsService {
 
     await this.productImageRepository.save(imagesToSave);
 
-    const shouldSetPrimary =
-      (!product.product_img_url || String(product.product_img_url).trim() === "") &&
-      existingCount === 0;
-
-    if (shouldSetPrimary) {
-      await this.productRepository.update(productId, {
-        product_img_url: imagesToSave[0]?.url,
-      } as any);
-    }
+    // Gallery images should NOT auto-set product_img_url
+    // product_img_url should be managed separately via featured image upload
 
     const freshImages = await this.productImageRepository.find({
       where: { product_id: productId },
@@ -768,7 +835,7 @@ export class ProductsService {
     return ResponseHelper.success(
       {
         product_id: productId,
-        product_img_url: shouldSetPrimary ? imagesToSave[0]?.url : product.product_img_url,
+        product_img_url: product.product_img_url, // Keep existing featured image
         images: freshImages,
       },
       "Product images uploaded successfully",
@@ -820,15 +887,13 @@ export class ProductsService {
       await this.productImageRepository.save(remaining);
     }
 
-    const nextPrimary = remaining?.[0]?.url || null;
-    await this.productRepository.update(productId, {
-      product_img_url: nextPrimary as any,
-    } as any);
+    // Gallery image deletion should NOT affect product_img_url
+    // product_img_url is managed separately via featured image
 
     return ResponseHelper.success(
       {
         product_id: productId,
-        product_img_url: nextPrimary,
+        product_img_url: product.product_img_url, // Keep existing featured image
         images: remaining,
       },
       "Product image deleted successfully",
@@ -1590,6 +1655,7 @@ export class ProductsService {
       brand_id,
       currency,
       product_img_url,
+      product_video_url,
       is_active,
       discount,
       start_discount_date,
@@ -1656,9 +1722,17 @@ export class ProductsService {
       ? this.extractProductsFileNameFromUrl(previousUrl)
       : null;
 
-    const nextUrl = typeof product_img_url === "string" ? product_img_url : undefined;
-    if (typeof nextUrl === "string") {
-      updateData.product_img_url = nextUrl;
+    // Handle image URL update
+    // Only update if product_img_url is explicitly provided in the DTO
+    if (product_img_url !== undefined) {
+      if (previousUrl && (!product_img_url || product_img_url === "")) {
+        // Explicitly set to empty string - will be converted to null
+        updateData.product_img_url = null;
+      } else if (product_img_url && product_img_url !== "") {
+        // New image URL provided
+        updateData.product_img_url = product_img_url;
+      }
+      // If product_img_url is undefined, don't include it in updateData (preserve existing)
     }
 
     // Handle video deletion
@@ -1667,9 +1741,17 @@ export class ProductsService {
       ? this.extractProductsFileNameFromUrl(previousVideoUrl)
       : null;
 
-    // Check if video should be deleted (set to null, empty, or undefined)
-    if (previousVideoUrl && (!updateData.product_video_url || updateData.product_video_url === "")) {
-      updateData.product_video_url = null;
+    // Handle video URL update
+    // Only update if product_video_url is explicitly provided in the DTO
+    if (product_video_url !== undefined) {
+      if (previousVideoUrl && (!product_video_url || product_video_url === "")) {
+        // Explicitly set to empty string - will be converted to null
+        updateData.product_video_url = null;
+      } else if (product_video_url && product_video_url !== "") {
+        // New video URL provided
+        updateData.product_video_url = product_video_url;
+      }
+      // If product_video_url is undefined, don't include it in updateData (preserve existing)
     }
 
     await this.productRepository.update(id, updateData);
@@ -1748,6 +1830,8 @@ export class ProductsService {
       }
     }
 
+    // Delete old image file if a new one was uploaded
+    const nextUrl = updateData.product_img_url || product_img_url;
     if (
       typeof nextUrl === "string" &&
       previousFileName &&
@@ -1785,10 +1869,18 @@ export class ProductsService {
   }
 
   async getById(id: string): Promise<ApiResponse<Product>> {
-    const product = await this.productRepository.findOne({
-      where: { id },
-      relations: ["category", "brand", "images"],
-    });
+    const product = await this.productRepository
+      .createQueryBuilder("product")
+      .leftJoinAndSelect("product.category", "category")
+      .leftJoinAndSelect("product.brand", "brand")
+      .leftJoinAndSelect("product.images", "images")
+      .leftJoinAndSelect("product.variants", "variants")
+      .leftJoinAndSelect("variants.variantType", "variantType")
+      .leftJoinAndSelect("product.cvgProducts", "cvgProducts")
+      .leftJoinAndSelect("cvgProducts.customerVisibilityGroup", "customerVisibilityGroup")
+      .leftJoinAndSelect("product.bulkPrices", "bulkPrices")
+      .where("product.id = :id", { id })
+      .getOne();
 
     if (!product) {
       throw new NotFoundException("Product not found");
@@ -1929,10 +2021,42 @@ export class ProductsService {
       throw new BadRequestException("Files backend did not return a valid video URL");
     }
 
-    // Update product_video_url in database
-    await this.productRepository.update(productId, {
-      product_video_url: saved.url,
-    });
+    console.log(`[uploadVideo] Product ID: ${productId}, Video URL: ${saved.url}`);
+
+    // Update product_video_url using save method for better TypeORM handling
+    try {
+      // First, get the product entity
+      const productToUpdate = await this.productRepository.findOne({ where: { id: productId } });
+      if (!productToUpdate) {
+        throw new NotFoundException("Product not found");
+      }
+
+      // Update the product_video_url field
+      productToUpdate.product_video_url = saved.url;
+      
+      // Save the updated product (TypeORM will detect the change and update only this field)
+      const savedProduct = await this.productRepository.save(productToUpdate);
+      
+      console.log(`[uploadVideo] Product saved successfully`);
+      console.log(`[uploadVideo] Saved product_video_url:`, (savedProduct as any)?.product_video_url);
+
+      // Verify the update by fetching the product again
+      const verifiedProduct = await this.productRepository.findOne({ where: { id: productId } });
+      console.log(`[uploadVideo] Verified product_video_url:`, (verifiedProduct as any)?.product_video_url);
+
+      if (!verifiedProduct) {
+        throw new NotFoundException("Product not found after save");
+      }
+
+      const finalUrl = (verifiedProduct as any)?.product_video_url;
+      if (finalUrl !== saved.url) {
+        console.error(`[uploadVideo] WARNING: URL mismatch! Expected: ${saved.url}, Got: ${finalUrl}`);
+        throw new BadRequestException("Failed to update product_video_url in database");
+      }
+    } catch (error: any) {
+      console.error(`[uploadVideo] Error updating product:`, error);
+      throw error;
+    }
 
     return ResponseHelper.success(
       { url: saved.url, fileName: saved.fileName },

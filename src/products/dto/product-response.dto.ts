@@ -122,6 +122,32 @@ export class WarehouseDto {
   code: string;
 }
 
+export class BulkPriceDto {
+  @ApiProperty({
+    description: "Bulk price ID",
+    example: "123e4567-e89b-12d3-a456-426614174000",
+  })
+  id: string;
+
+  @ApiProperty({
+    description: "Minimum quantity for bulk pricing",
+    example: 10,
+  })
+  quantity: number;
+
+  @ApiProperty({
+    description: "Price per product for this quantity",
+    example: 15.99,
+  })
+  price_per_product: number;
+
+  @ApiProperty({
+    description: "Product ID",
+    example: "123e4567-e89b-12d3-a456-426614174000",
+  })
+  product_id: string;
+}
+
 export class ProductDto {
   @ApiProperty({
     description: "Product ID",
@@ -317,6 +343,13 @@ export class ProductDto {
     nullable: true,
   })
   warehouse?: WarehouseDto;
+
+  @ApiProperty({
+    description: "Product bulk prices",
+    type: [BulkPriceDto],
+    required: false,
+  })
+  bulkPrices?: BulkPriceDto[];
 }
 
 export class ProductResponseDto {

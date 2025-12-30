@@ -2,11 +2,12 @@ import {
   Injectable,
   UnauthorizedException,
   BadRequestException,
+  NotFoundException,
   Logger,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { InjectRepository, InjectDataSource } from "@nestjs/typeorm";
+import { DataSource, Repository } from "typeorm";
 import * as bcrypt from "bcrypt";
 import { User } from "../entities/user.entity";
 import { OauthToken } from "../entities/oauth-token.entity";
@@ -15,6 +16,7 @@ import { Permission } from "../entities/permission.entity";
 import { Module } from "../entities/module.entity";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshDto } from "./dto/refresh.dto";
+import { UpdateProfileDto } from "./dto/update-profile.dto";
 import { CacheService } from "../cache/cache.service";
 import { AppConfigService } from "../config/config.service";
 import { ResponseHelper } from "../common/helpers/response.helper";
@@ -37,7 +39,9 @@ export class AuthService {
     private moduleRepository: Repository<Module>,
     private jwtService: JwtService,
     private cacheService: CacheService,
-    private configService: AppConfigService
+    private configService: AppConfigService,
+    @InjectDataSource()
+    private dataSource: DataSource
   ) {}
 
   private async getModulesWithPermissions(roleId: string) {
@@ -201,94 +205,155 @@ export class AuthService {
         throw new UnauthorizedException("Invalid refresh token");
       }
 
-      // Find token record in database
-      let tokenRecord = await this.tokenRepository.findOne({
-        where: {
-          refresh_token: normalizedRefreshToken,
-          userId,
-          revoked: false,
-        },
-        relations: ["user"],
-      });
+      // Use transaction with row-level locking to prevent race conditions
+      // This ensures only one refresh request can process at a time for the same refresh token
+      const queryRunner = this.dataSource.createQueryRunner();
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
 
-      if (!tokenRecord) {
-        // Fallback: some clients may send the correct refresh token but the sub might not match
-        // due to historical data inconsistencies. Still keep it secure by verifying JWT above.
-        const tokenRecordByRefresh = await this.tokenRepository.findOne({
-          where: {
-            refresh_token: normalizedRefreshToken,
-            revoked: false,
-          },
-          relations: ["user"],
+      try {
+        // Find token record with row-level lock (SELECT FOR UPDATE)
+        // This prevents concurrent refresh requests from processing the same token
+        // Note: We lock first without join, then load user separately to avoid PostgreSQL error
+        let tokenRecord = await queryRunner.manager
+          .createQueryBuilder(OauthToken, "token")
+          .setLock("pessimistic_write") // Row-level lock
+          .where("token.refresh_token = :refreshToken", { refreshToken: normalizedRefreshToken })
+          .andWhere("token.userId = :userId", { userId })
+          .andWhere("token.revoked = :revoked", { revoked: false })
+          .getOne();
+
+        if (!tokenRecord) {
+          // Fallback: some clients may send the correct refresh token but the sub might not match
+          // due to historical data inconsistencies. Still keep it secure by verifying JWT above.
+          const tokenRecordByRefresh = await queryRunner.manager
+            .createQueryBuilder(OauthToken, "token")
+            .setLock("pessimistic_write") // Row-level lock
+            .where("token.refresh_token = :refreshToken", { refreshToken: normalizedRefreshToken })
+            .andWhere("token.revoked = :revoked", { revoked: false })
+            .getOne();
+
+          if (!tokenRecordByRefresh) {
+            await queryRunner.rollbackTransaction();
+            await queryRunner.release();
+            this.logger.warn(
+              `Refresh failed: token record not found for userId=${userId}`
+            );
+            throw new UnauthorizedException("Invalid refresh token");
+          }
+
+          if (String(tokenRecordByRefresh.userId) !== userId) {
+            await queryRunner.rollbackTransaction();
+            await queryRunner.release();
+            this.logger.warn(
+              `Refresh failed: token belongs to different user (expected=${userId}, actual=${tokenRecordByRefresh.userId})`
+            );
+            throw new UnauthorizedException("Invalid refresh token");
+          }
+
+          // Use fallback record
+          tokenRecord = tokenRecordByRefresh;
+        }
+
+        if (!tokenRecord) {
+          await queryRunner.rollbackTransaction();
+          await queryRunner.release();
+          throw new UnauthorizedException("Invalid refresh token");
+        }
+
+        // Load user relation separately (after locking) to avoid PostgreSQL FOR UPDATE error
+        // PostgreSQL doesn't allow FOR UPDATE on nullable side of outer join
+        const tokenWithUser = await queryRunner.manager
+          .createQueryBuilder(OauthToken, "token")
+          .leftJoinAndSelect("token.user", "user")
+          .where("token.id = :tokenId", { tokenId: tokenRecord.id })
+          .getOne();
+        
+        if (tokenWithUser && tokenWithUser.user) {
+          tokenRecord.user = tokenWithUser.user;
+        } else {
+          // Fallback: load user directly if relation not loaded
+          const user = await queryRunner.manager.findOne(User, { where: { id: tokenRecord.userId } });
+          if (!user) {
+            await queryRunner.rollbackTransaction();
+            await queryRunner.release();
+            this.logger.warn(`Refresh failed: user not found for userId=${tokenRecord.userId}`);
+            throw new UnauthorizedException("Invalid refresh token");
+          }
+          tokenRecord.user = user;
+        }
+
+        // Note:
+        // tokenRecord.expires_at tracks the ACCESS token expiry in this codebase.
+        // Refresh token expiry is already enforced by jwtService.verify(refresh_token).
+
+        // Invalidate old access token cache before updating
+        if (tokenRecord.token) {
+          await this.cacheService.invalidateToken(tokenRecord.token);
+        }
+
+        // Generate new access token
+        const newPayload = { sub: payload.sub, email: payload.email };
+        const newAccessToken = this.jwtService.sign(newPayload, {
+          expiresIn: this.configService.jwtAccessExpires,
         });
 
-        if (!tokenRecordByRefresh) {
-          this.logger.warn(
-            `Refresh failed: token record not found for userId=${userId}`
-          );
-          throw new UnauthorizedException("Invalid refresh token");
+        // Calculate new expiry date
+        const newExpiresAt = new Date();
+        const accessExpiresInMinutes = this.configService.jwtAccessExpiresMinutes;
+        newExpiresAt.setMinutes(
+          newExpiresAt.getMinutes() + accessExpiresInMinutes
+        );
+
+        // Update token record within transaction
+        tokenRecord.token = newAccessToken;
+        tokenRecord.expires_at = newExpiresAt;
+        await queryRunner.manager.save(OauthToken, tokenRecord);
+
+        // Commit transaction
+        await queryRunner.commitTransaction();
+        await queryRunner.release();
+
+        // Update cache with new token
+        const tokenData = {
+          userId: tokenRecord.userId,
+          expires_at: newExpiresAt,
+          revoked: false,
+          user: tokenRecord.user,
+        };
+        await this.cacheService.cacheTokenData(
+          newAccessToken,
+          tokenData,
+          accessExpiresInMinutes
+        );
+
+        this.logger.log(`Token refreshed for user: ${tokenRecord.user.email}`);
+
+        return ResponseHelper.success(
+          {
+            token: newAccessToken,
+            expires_at: newExpiresAt,
+          },
+          "Token refreshed successfully",
+          "Authentication"
+        );
+      } catch (innerError) {
+        // Rollback transaction on error
+        if (queryRunner.isTransactionActive) {
+          await queryRunner.rollbackTransaction();
         }
-
-        if (String(tokenRecordByRefresh.userId) !== userId) {
-          this.logger.warn(
-            `Refresh failed: token belongs to different user (expected=${userId}, actual=${tokenRecordByRefresh.userId})`
-          );
-          throw new UnauthorizedException("Invalid refresh token");
+        await queryRunner.release();
+        
+        const name = String((innerError as any)?.name ?? "");
+        const message = String((innerError as any)?.message ?? "");
+        if (name) {
+          this.logger.warn(`Refresh error: ${name}${message ? ` - ${message}` : ""}`);
         }
-
-        // Use fallback record
-        tokenRecord = tokenRecordByRefresh;
-      }
-
-      if (!tokenRecord) {
+        if (innerError instanceof UnauthorizedException) {
+          throw innerError;
+        }
         throw new UnauthorizedException("Invalid refresh token");
       }
-
-      // Note:
-      // tokenRecord.expires_at tracks the ACCESS token expiry in this codebase.
-      // Refresh token expiry is already enforced by jwtService.verify(refresh_token).
-
-      // Generate new access token
-      const newPayload = { sub: payload.sub, email: payload.email };
-      const newAccessToken = this.jwtService.sign(newPayload, {
-        expiresIn: this.configService.jwtAccessExpires,
-      });
-
-      // Calculate new expiry date
-      const newExpiresAt = new Date();
-      const accessExpiresInMinutes = this.configService.jwtAccessExpiresMinutes;
-      newExpiresAt.setMinutes(
-        newExpiresAt.getMinutes() + accessExpiresInMinutes
-      );
-
-      // Update token record
-      tokenRecord.token = newAccessToken;
-      tokenRecord.expires_at = newExpiresAt;
-      await this.tokenRepository.save(tokenRecord);
-
-      // Update cache with new token
-      const tokenData = {
-        userId: tokenRecord.userId,
-        expires_at: newExpiresAt,
-        revoked: false,
-        user: tokenRecord.user,
-      };
-      await this.cacheService.cacheTokenData(
-        newAccessToken,
-        tokenData,
-        accessExpiresInMinutes
-      );
-
-      this.logger.log(`Token refreshed for user: ${tokenRecord.user.email}`);
-
-      return ResponseHelper.success(
-        {
-          token: newAccessToken,
-          expires_at: newExpiresAt,
-        },
-        "Token refreshed successfully",
-        "Authentication"
-      );
     } catch (error) {
       const name = String((error as any)?.name ?? "");
       const message = String((error as any)?.message ?? "");
@@ -322,6 +387,61 @@ export class AuthService {
       null,
       "Logged out successfully",
       "Authentication"
+    );
+  }
+
+  async updateProfile(
+    userId: string,
+    updateProfileDto: UpdateProfileDto
+  ): Promise<ApiResponse<User>> {
+    const { name, currentPassword, newPassword } = updateProfileDto;
+
+    // Find user
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      relations: ["role"],
+    });
+
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+
+    // Update name
+    user.name = name;
+
+    // Handle password change if provided
+    if (newPassword) {
+      if (!currentPassword) {
+        throw new BadRequestException("Current password is required to change password");
+      }
+
+      // Verify current password
+      const isCurrentPasswordValid = await bcrypt.compare(
+        currentPassword,
+        user.password
+      );
+
+      if (!isCurrentPasswordValid) {
+        throw new UnauthorizedException("Current password is incorrect");
+      }
+
+      // Hash and set new password
+      const saltRounds = 10;
+      user.password = await bcrypt.hash(newPassword, saltRounds);
+    }
+
+    // Save updated user
+    const updatedUser = await this.userRepository.save(user);
+
+    // Remove password from response
+    const { password, ...userWithoutPassword } = updatedUser;
+
+    this.logger.log(`Profile updated for user: ${user.email}`);
+
+    return ResponseHelper.success(
+      userWithoutPassword as User,
+      "Profile updated successfully",
+      "Profile"
     );
   }
 

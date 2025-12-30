@@ -93,7 +93,7 @@ export class ProductsController {
       storage: memoryStorage(),
       limits: {
         fileSize: 5 * 1024 * 1024,
-        files: 5,
+        files: 4, // Max 4 gallery images (featured image is separate)
       },
       fileFilter: (req, file, cb) => {
         const allowed = ["image/jpeg", "image/png", "image/webp"];
@@ -120,6 +120,56 @@ export class ProductsController {
     return this.productsService.uploadImages(
       productId,
       list,
+      req.headers.authorization
+    );
+  }
+
+  @Post("featured-image/:productId")
+  @ApiOperation({ summary: "Upload featured/primary product image" })
+  @ApiConsumes("multipart/form-data")
+  @ApiParam({ name: "productId", description: "Product ID", type: String })
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["file"],
+      properties: {
+        file: { type: "string", format: "binary" },
+      },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: memoryStorage(),
+      limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB
+      },
+      fileFilter: (req, file, cb) => {
+        const allowed = ["image/jpeg", "image/png", "image/webp"];
+        if (!allowed.includes(file.mimetype)) {
+          return cb(
+            new Error("Only jpeg, png, webp images are allowed"),
+            false
+          );
+        }
+        cb(null, true);
+      },
+    })
+  )
+  async uploadFeaturedImage(
+    @Req() req: Request,
+    @Param("productId") productId: string,
+    @UploadedFile() file: UploadedImageFile
+  ) {
+    if (!file) {
+      throw new BadRequestException("No file provided");
+    }
+    return this.productsService.uploadFeaturedImage(
+      productId,
+      {
+        buffer: file.buffer,
+        mimetype: file.mimetype,
+        originalname: file.originalname,
+      },
       req.headers.authorization
     );
   }

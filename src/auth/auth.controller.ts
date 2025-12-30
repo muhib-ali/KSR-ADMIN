@@ -1,10 +1,12 @@
 import {
   Controller,
   Post,
+  Put,
   Body,
   UseGuards,
   Request,
   ValidationPipe,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import {
@@ -17,6 +19,7 @@ import {
 import { AuthService } from "./auth.service";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshDto } from "./dto/refresh.dto";
+import { UpdateProfileDto } from "./dto/update-profile.dto";
 import { LoginResponseDto } from "./dto/login-response.dto";
 import { JwtAuthGuard } from "./jwt-auth.guard";
 
@@ -72,7 +75,7 @@ export class AuthController {
   @ApiResponse({ status: 401, description: "Invalid refresh token" })
   @ApiResponse({ status: 429, description: "Too many requests" })
   @ApiBody({ type: RefreshDto })
-  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 refresh attempts per minute
+  @Throttle({ default: { limit: 60, ttl: 60000 } }) // 60 refresh attempts per minute (more lenient for legitimate use)
   async refresh(@Body(ValidationPipe) refreshDto: RefreshDto) {
     return this.authService.refresh(refreshDto);
   }
@@ -97,5 +100,71 @@ export class AuthController {
   async logout(@Request() req) {
     const token = req.headers.authorization?.split(" ")[1];
     return this.authService.logout(token);
+  }
+
+  @Put("profile")
+  @ApiOperation({ summary: "Update user profile" })
+  @ApiResponse({
+    status: 200,
+    description: "Profile updated successfully",
+    schema: {
+      example: {
+        status: true,
+        message: "Profile updated successfully",
+        heading: "Profile",
+        data: {
+          id: "123e4567-e89b-12d3-a456-426614174000",
+          name: "John Doe Updated",
+          email: "john.doe@example.com",
+          role_id: "123e4567-e89b-12d3-a456-426614174000",
+          role: {
+            id: "123e4567-e89b-12d3-a456-426614174000",
+            title: "Admin",
+            slug: "admin",
+          },
+          created_at: "2024-01-01T00:00:00.000Z",
+          updated_at: "2024-01-02T00:00:00.000Z",
+          created_by: null,
+          updated_by: null,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: "Unauthorized - Invalid token or incorrect current password",
+    schema: {
+      example: {
+        statusCode: 401,
+        message: "Current password is incorrect",
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: "Bad Request - Current password required for password change",
+    schema: {
+      example: {
+        statusCode: 400,
+        message: "Current password is required to change password",
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: "User not found",
+  })
+  @ApiBearerAuth("JWT-auth")
+  @UseGuards(JwtAuthGuard)
+  @ApiBody({ type: UpdateProfileDto })
+  async updateProfile(
+    @Request() req,
+    @Body(ValidationPipe) updateProfileDto: UpdateProfileDto
+  ) {
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new UnauthorizedException("User not authenticated");
+    }
+    return this.authService.updateProfile(userId, updateProfileDto);
   }
 }

@@ -97,6 +97,15 @@ export class UpdateProductDto {
   product_img_url?: string;
 
   @ApiProperty({
+    description: "Product video URL",
+    example: "http://localhost:3003/public/products/your-video.mp4",
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  product_video_url?: string;
+
+  @ApiProperty({
     description: "Product active status",
     example: true,
     required: false,
