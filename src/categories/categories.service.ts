@@ -27,7 +27,7 @@ export class CategoriesService {
   async create(
     createCategoryDto: CreateCategoryDto
   ): Promise<ApiResponse<Category>> {
-    const { name, description } = createCategoryDto;
+    const { name, description, isActive } = createCategoryDto;
 
     const existingCategory = await this.categoryRepository.findOne({
       where: { name },
@@ -40,6 +40,7 @@ export class CategoriesService {
     const category = this.categoryRepository.create({
       name,
       description,
+      is_active: isActive !== undefined ? isActive : true, // Default to true if not provided
     });
 
     const savedCategory = await this.categoryRepository.save(category);
@@ -53,7 +54,7 @@ export class CategoriesService {
   }
 
   async update(updateCategoryDto: UpdateCategoryDto): Promise<ApiResponse<Category>> {
-    const { id, name, description } = updateCategoryDto;
+    const { id, name, description, isActive } = updateCategoryDto;
 
     const category = await this.categoryRepository.findOne({ where: { id } });
     if (!category) {
@@ -68,10 +69,15 @@ export class CategoriesService {
       throw new BadRequestException("Category with this name already exists");
     }
 
-    const updateData: Partial<Omit<UpdateCategoryDto, "id">> = {
+    const updateData: any = {
       name,
       description,
     };
+
+    // Only include isActive if it's provided
+    if (isActive !== undefined) {
+      updateData.is_active = isActive;
+    }
 
     await this.categoryRepository.update(id, updateData);
 
@@ -80,7 +86,7 @@ export class CategoriesService {
     });
 
     return ResponseHelper.success(
-      updatedCategory!,
+      updatedCategory,
       "Category updated successfully",
       "Category",
       200

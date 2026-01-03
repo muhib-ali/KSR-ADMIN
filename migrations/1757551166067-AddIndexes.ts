@@ -70,6 +70,14 @@ export class AddIndexes1757551166067 implements MigrationInterface {
       `CREATE INDEX IF NOT EXISTS "IDX_products_brand_id" ON "products" ("brand_id")`
     );
 
+    // Indexes for new cost and freight columns for performance optimization
+    await queryRunner.query(
+      `CREATE INDEX IF NOT EXISTS "IDX_products_cost" ON "products" ("cost")`
+    );
+    await queryRunner.query(
+      `CREATE INDEX IF NOT EXISTS "IDX_products_freight" ON "products" ("freight")`
+    );
+
     await queryRunner.query(
       `CREATE INDEX IF NOT EXISTS "IDX_product_images_product_id" ON "product_images" ("product_id")`
     );
@@ -111,6 +119,10 @@ export class AddIndexes1757551166067 implements MigrationInterface {
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_products_brand_id"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_products_category_id"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_products_sku"`);
+
+    // Drop indexes for cost and freight columns
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_products_cost"`);
+    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_products_freight"`);
 
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_product_images_product_sort"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_product_images_product_id"`);

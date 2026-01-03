@@ -175,6 +175,20 @@ export class ProductDto {
   price: number;
 
   @ApiProperty({
+    description: "Product cost price",
+    example: 150.00,
+    nullable: true,
+  })
+  cost: number | null;
+
+  @ApiProperty({
+    description: "Product freight/shipping cost",
+    example: 25.00,
+    nullable: true,
+  })
+  freight: number | null;
+
+  @ApiProperty({
     description: "Stock quantity",
     example: 50,
   })

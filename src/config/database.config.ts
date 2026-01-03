@@ -10,7 +10,10 @@ export const dataSourceOptions: DataSourceOptions = {
   schema: "public",
   synchronize: false,
   ssl: process.env.DB_SSL === "true",
-  entities: [__dirname + "/../entities/*.entity{.ts,.js}"],
+  entities: [
+    __dirname + "/../entities/*.entity{.ts,.js}",
+    __dirname + "/../../KSR-CUSTOMER/src/entities/*.entity{.ts,.js}"
+  ],
   migrations: ["migrations/*{.ts,.js}"],
 };
 
@@ -25,7 +28,10 @@ export const appDataSourceOptions: DataSourceOptions = {
   schema: "public",
   synchronize: false,
   ssl: process.env.DB_SSL === "true",
-  entities: [__dirname + "/../entities/*.entity{.ts,.js}"],
+  entities: [
+    __dirname + "/../entities/*.entity{.ts,.js}",
+    __dirname + "/../../KSR-CUSTOMER/src/entities/*.entity{.ts,.js}"
+  ],
 };
 
 export default new DataSource(dataSourceOptions);

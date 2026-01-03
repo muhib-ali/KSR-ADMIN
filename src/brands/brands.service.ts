@@ -24,7 +24,7 @@ export class BrandsService {
   ) {}
 
   async create(createBrandDto: CreateBrandDto): Promise<ApiResponse<Brand>> {
-    const { name, description } = createBrandDto;
+    const { name, description, isActive } = createBrandDto;
 
     const existingBrand = await this.brandRepository.findOne({
       where: { name },
@@ -37,6 +37,7 @@ export class BrandsService {
     const brand = this.brandRepository.create({
       name,
       description,
+      is_active: isActive !== undefined ? isActive : true, // Default to true if not provided
     });
 
     const savedBrand = await this.brandRepository.save(brand);
@@ -50,7 +51,7 @@ export class BrandsService {
   }
 
   async update(updateBrandDto: UpdateBrandDto): Promise<ApiResponse<Brand>> {
-    const { id, name, description } = updateBrandDto;
+    const { id, name, description, isActive } = updateBrandDto;
 
     const brand = await this.brandRepository.findOne({ where: { id } });
     if (!brand) {
@@ -65,10 +66,15 @@ export class BrandsService {
       throw new BadRequestException("Brand with this name already exists");
     }
 
-    const updateData: Partial<Omit<UpdateBrandDto, "id">> = {
+    const updateData: any = {
       name,
       description,
     };
+
+    // Only include isActive if it's provided
+    if (isActive !== undefined) {
+      updateData.is_active = isActive;
+    }
 
     await this.brandRepository.update(id, updateData);
 
@@ -77,7 +83,7 @@ export class BrandsService {
     });
 
     return ResponseHelper.success(
-      updatedBrand!,
+      updatedBrand,
       "Brand updated successfully",
       "Brand",
       200

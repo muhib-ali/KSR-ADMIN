@@ -406,8 +406,15 @@ export class AuthService {
       throw new NotFoundException("User not found");
     }
 
-    // Update name
-    user.name = name;
+    // Validate that at least one field is provided for update
+    if (!name && !newPassword) {
+      throw new BadRequestException("At least one field (name or password) must be provided for update");
+    }
+
+    // Update name if provided
+    if (name) {
+      user.name = name.trim();
+    }
 
     // Handle password change if provided
     if (newPassword) {
@@ -436,7 +443,7 @@ export class AuthService {
     // Remove password from response
     const { password, ...userWithoutPassword } = updatedUser;
 
-    this.logger.log(`Profile updated for user: ${user.email}`);
+    this.logger.log(`Profile updated for user: ${user.email} - Fields updated: ${name ? 'name' : ''}${newPassword ? ',password' : ''}`);
 
     return ResponseHelper.success(
       userWithoutPassword as User,

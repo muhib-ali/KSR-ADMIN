@@ -31,6 +31,12 @@ export class Product extends BaseAuditColumns {
   @Column({ type: "numeric" })
   price: number;
 
+  @Column({ type: "numeric", nullable: true })
+  cost: number;
+
+  @Column({ type: "numeric", nullable: true })
+  freight: number;
+
   @Column({ type: "int" })
   stock_quantity: number;
 

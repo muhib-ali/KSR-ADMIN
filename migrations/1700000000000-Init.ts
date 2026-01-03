@@ -119,6 +119,8 @@ export class Init1700000000000 implements MigrationInterface {
                 "title" character varying NOT NULL,
                 "description" character varying,
                 "price" numeric NOT NULL,
+                "cost" numeric,
+                "freight" numeric,
                 "stock_quantity" integer NOT NULL,
                 "category_id" uuid NOT NULL,
                 "brand_id" uuid NOT NULL,
@@ -223,7 +225,7 @@ export class Init1700000000000 implements MigrationInterface {
         `);
 
     await queryRunner.query(`
-            CREATE TABLE "users" (
+            CREATE TABLE "system_users" (
                 "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                 "is_active" boolean NOT NULL DEFAULT true,
                 "created_by" character varying,
@@ -253,7 +255,7 @@ export class Init1700000000000 implements MigrationInterface {
                 "refresh_token" character varying NOT NULL,
                 "expires_at" TIMESTAMP WITH TIME ZONE NOT NULL,
                 "revoked" boolean NOT NULL DEFAULT false,
-                CONSTRAINT "FK_oauth_tokens_userId" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION
+                CONSTRAINT "FK_oauth_tokens_userId" FOREIGN KEY ("userId") REFERENCES "system_users"("id") ON DELETE CASCADE ON UPDATE NO ACTION
             )
         `);
 
@@ -270,7 +272,7 @@ export class Init1700000000000 implements MigrationInterface {
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_oauth_tokens_userId"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_oauth_tokens_token"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "oauth_tokens"`);
-    await queryRunner.query(`DROP TABLE IF EXISTS "users"`);
+    await queryRunner.query(`DROP TABLE IF EXISTS "system_users"`);
     await queryRunner.query(
       `DROP INDEX IF EXISTS "IDX_role_permissions_role_id_permission_id"`
     );

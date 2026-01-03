@@ -103,7 +103,7 @@ export class AuthController {
   }
 
   @Put("profile")
-  @ApiOperation({ summary: "Update user profile" })
+  @ApiOperation({ summary: "Update user profile - supports partial updates" })
   @ApiResponse({
     status: 200,
     description: "Profile updated successfully",
@@ -142,11 +142,23 @@ export class AuthController {
   })
   @ApiResponse({
     status: 400,
-    description: "Bad Request - Current password required for password change",
+    description: "Bad Request - Current password required for password change or no fields provided",
     schema: {
-      example: {
-        statusCode: 400,
-        message: "Current password is required to change password",
+      examples: {
+        noFields: {
+          summary: "No fields provided",
+          value: {
+            statusCode: 400,
+            message: "At least one field (name or password) must be provided for update",
+          },
+        },
+        passwordWithoutCurrent: {
+          summary: "Password change without current password",
+          value: {
+            statusCode: 400,
+            message: "Current password is required to change password",
+          },
+        },
       },
     },
   })
@@ -156,7 +168,32 @@ export class AuthController {
   })
   @ApiBearerAuth("JWT-auth")
   @UseGuards(JwtAuthGuard)
-  @ApiBody({ type: UpdateProfileDto })
+  @ApiBody({ 
+    type: UpdateProfileDto,
+    examples: {
+      updateName: {
+        summary: "Update name only",
+        value: {
+          name: "John Doe Updated",
+        },
+      },
+      updatePassword: {
+        summary: "Update password only",
+        value: {
+          currentPassword: "OldPassword123",
+          newPassword: "NewPassword123",
+        },
+      },
+      updateBoth: {
+        summary: "Update both name and password",
+        value: {
+          name: "John Doe Updated",
+          currentPassword: "OldPassword123",
+          newPassword: "NewPassword123",
+        },
+      },
+    },
+  })
   async updateProfile(
     @Request() req,
     @Body(ValidationPipe) updateProfileDto: UpdateProfileDto

@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsUUID } from "class-validator";
+import { IsString, IsNotEmpty, IsOptional, IsUUID, IsBoolean } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 
 export class UpdateBrandDto {
@@ -26,4 +26,12 @@ export class UpdateBrandDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @ApiProperty({
+    description: "Brand active status",
+    example: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }

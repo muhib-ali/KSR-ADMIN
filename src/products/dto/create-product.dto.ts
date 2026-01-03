@@ -46,6 +46,28 @@ export class CreateProductDto {
   price: number;
 
   @ApiProperty({
+    description: "Product cost price",
+    example: 150.00,
+    required: false,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  cost?: number;
+
+  @ApiProperty({
+    description: "Product freight/shipping cost",
+    example: 25.00,
+    required: false,
+  })
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  freight?: number;
+
+  @ApiProperty({
     description: "Available stock quantity",
     example: 50,
   })
