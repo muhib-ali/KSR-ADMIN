@@ -162,6 +162,12 @@ async function seed() {
         slug:"variant-types",
         description:"Manage variant types",
         is_active:true
+      },
+      {
+        title:"Promo Codes",
+        slug:"promo-codes",
+        description:"Manage promo codes",
+        is_active:true
       }
     ];
 

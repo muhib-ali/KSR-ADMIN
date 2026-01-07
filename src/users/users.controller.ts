@@ -37,7 +37,22 @@ export class UsersController {
   @ApiResponse({
     status: 201,
     description: "User created successfully",
-    type: UserResponseDto,
+    schema: {
+      example: {
+        statusCode: 201,
+        status: true,
+        message: "User created successfully",
+        heading: "User",
+        data: {
+          name: "John Doe",
+          email: "john.doe@example.com",
+          roleId: "123e4567-e89b-12d3-a456-426614174000",
+          is_active: true,
+          created_at: "2024-01-01T00:00:00.000Z",
+          updated_at: "2024-01-01T00:00:00.000Z",
+        },
+      },
+    },
   })
   @ApiResponse({
     status: 400,
