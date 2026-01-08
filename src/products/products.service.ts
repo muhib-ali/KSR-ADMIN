@@ -14,6 +14,9 @@ import { VariantType } from "../entities/variant-type.entity";
 import { CvgProduct } from "../entities/cvg-product.entity";
 import { BulkPrice } from "../entities/bulk-price.entity";
 import { CustomerVisibilityGroup } from "../entities/customer-visibility-group.entity";
+import { Tax } from "../entities/tax.entity";
+import { Supplier } from "../entities/supplier.entity";
+import { Warehouse } from "../entities/warehouse.entity";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { DeleteProductDto } from "./dto/delete-product.dto";
@@ -47,7 +50,13 @@ export class ProductsService {
     @InjectRepository(BulkPrice)
     private bulkPriceRepository: Repository<BulkPrice>,
     @InjectRepository(CustomerVisibilityGroup)
-    private customerVisibilityGroupRepository: Repository<CustomerVisibilityGroup>
+    private customerVisibilityGroupRepository: Repository<CustomerVisibilityGroup>,
+    @InjectRepository(Tax)
+    private taxRepository: Repository<Tax>,
+    @InjectRepository(Supplier)
+    private supplierRepository: Repository<Supplier>,
+    @InjectRepository(Warehouse)
+    private warehouseRepository: Repository<Warehouse>
   ) {}
 
   private readonly filesBackendBaseUrl =
@@ -970,6 +979,27 @@ export class ProductsService {
     return (value || "").trim();
   }
 
+  private parseBooleanCell(value: string | undefined): boolean {
+    const v = String(value ?? "")
+      .trim()
+      .toLowerCase();
+    return v === "true" || v === "1" || v === "yes" || v === "y";
+  }
+
+  private parseExcelDateCell(value: string | number | undefined): Date | null {
+    if (value === undefined || value === null) return null;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      // Excel serial date -> JS Date (Excel epoch starts 1899-12-30)
+      const ms = Math.round((value - 25569) * 86400 * 1000);
+      const d = new Date(ms);
+      return Number.isFinite(d.getTime()) ? d : null;
+    }
+    const s = String(value).trim();
+    if (!s) return null;
+    const d = new Date(s);
+    return Number.isFinite(d.getTime()) ? d : null;
+  }
+
   private normalizeNameKey(value: string): string {
     return this.normalizeName(value).toLowerCase();
   }
@@ -1041,13 +1071,35 @@ export class ProductsService {
     authorizationHeader?: string
   ): Promise<ApiResponse<any>> {
     const expectedHeaders = [
-      "title",
+      "name",
       "description",
-      "price",
-      "stock_quantity",
-      "categorytitle",
-      "brandtitle",
-      "currency",
+      "category",
+      "brand",
+      "supplier",
+      "warehouse",
+      "tax",
+      "size",
+      "model",
+      "year",
+      "custom variant",
+      "variant name",
+      "retail",
+      "wholesale",
+      "selling price",
+      "cost",
+      "freight",
+      "currency(USD)",
+      "Discount",
+      "start date",
+      "end date",
+      "bp quantity",
+      "bp price per product",
+      "stock",
+      "weight",
+      "length",
+      "width",
+      "height",
+      "video",
       "image1",
       "image2",
       "image3",
@@ -1084,8 +1136,8 @@ export class ProductsService {
     }
 
     const headerRow = (rows[0] || []).map((h) => String(h || "").trim());
-    const headerLower = headerRow.map((h) => h.toLowerCase());
-    const expectedLower = expectedHeaders.map((h) => h.toLowerCase());
+    const headerLower = headerRow.map((h) => h.toLowerCase().replace(/\s+/g, " "));
+    const expectedLower = expectedHeaders.map((h) => h.toLowerCase().replace(/\s+/g, " "));
 
     const matches =
       headerLower.length >= expectedLower.length &&
@@ -1097,49 +1149,50 @@ export class ProductsService {
       );
     }
 
-    const embeddedImagesByRow = await this.extractEmbeddedImagesForColumnsByRow(
-      file.buffer,
-      [7, 8, 9, 10, 11]
-    );
-
     type RowInput = {
       rowNumber: number;
-      title: string;
+      name: string;
       description?: string;
-      price: number;
-      stock_quantity: number;
-      categorytitle: string;
-      brandtitle: string;
+      category: string;
+      brand: string;
+      supplier?: string;
+      warehouse?: string;
+      tax?: string;
+      size?: string;
+      model?: string;
+      year?: string;
+      customVariant?: string;
+      variantName?: string;
+      retail?: string;
+      wholesale?: string;
+      sellingPrice: number;
+      cost?: number;
+      freight?: number;
       currency: string;
+      discount?: number;
+      startDate?: string;
+      endDate?: string;
+      bpQuantity?: number;
+      bpPricePerProduct?: number;
+      stock: number;
+      weight?: number;
+      length?: number;
+      width?: number;
+      height?: number;
+      video?: string;
       imageUrls?: string[];
-      embeddedImages?: Array<{ buffer: Buffer; mimetype: string; originalname: string }>;
     };
 
-    const failures: Array<{ rowNumber: number; reason: string; rowData?: any }> = [];
+    const failures: Array<{ rowNumber: number; reason: string }> = [];
     const validRows: RowInput[] = [];
 
     let nonEmptyRows = 0;
-
-    const fallbackMediaImage = await this.extractFirstMediaImageFromXlsx(file.buffer);
 
     for (let i = 1; i < rows.length; i++) {
       const excelRowNumber = i + 1;
       const r = rows[i] || [];
 
-      const isEmptyRow = [
-        r[0],
-        r[1],
-        r[2],
-        r[3],
-        r[4],
-        r[5],
-        r[6],
-        r[7],
-        r[8],
-        r[9],
-        r[10],
-        r[11],
-      ].every((c) => String(c ?? "").trim() === "");
+      const isEmptyRow = r.every((c: any) => String(c ?? "").trim() === "");
       if (isEmptyRow) {
         continue;
       }
@@ -1150,171 +1203,221 @@ export class ProductsService {
         return /^\[object\s+object\]$/i.test(s) ? "" : s;
       };
 
-      const imageUrls = [
-        normalizeCell(r[7]),
-        normalizeCell(r[8]),
-        normalizeCell(r[9]),
-        normalizeCell(r[10]),
-        normalizeCell(r[11]),
-      ].filter((s) => !!s);
+      const name = normalizeCell(r[0]);
+      const description = normalizeCell(r[1]);
+      const category = normalizeCell(r[2]);
+      const brand = normalizeCell(r[3]);
+      const supplier = normalizeCell(r[4]);
+      const warehouse = normalizeCell(r[5]);
+      const tax = normalizeCell(r[6]);
+      const size = normalizeCell(r[7]);
+      const model = normalizeCell(r[8]);
+      const year = normalizeCell(r[9]);
+      const customVariant = normalizeCell(r[10]);
+      const variantName = normalizeCell(r[11]);
+      const retail = normalizeCell(r[12]);
+      const wholesale = normalizeCell(r[13]);
+      const sellingPrice = normalizeCell(r[14]);
+      const cost = normalizeCell(r[15]);
+      const freight = normalizeCell(r[16]);
+      const currency = normalizeCell(r[17]);
+      const discount = normalizeCell(r[18]);
+      const startDate = normalizeCell(r[19]);
+      const endDate = normalizeCell(r[20]);
+      const bpQuantity = normalizeCell(r[21]);
+      const bpPricePerProduct = normalizeCell(r[22]);
+      const stock = normalizeCell(r[23]);
+      const weight = normalizeCell(r[24]);
+      const length = normalizeCell(r[25]);
+      const width = normalizeCell(r[26]);
+      const height = normalizeCell(r[27]);
+      const video = normalizeCell(r[28]);
+      const image1 = normalizeCell(r[29]);
+      const image2 = normalizeCell(r[30]);
+      const image3 = normalizeCell(r[31]);
+      const image4 = normalizeCell(r[32]);
+      const image5 = normalizeCell(r[33]);
 
-      const obj: any = {
-        title: String(r[0] || "").trim(),
-        description: String(r[1] || "").trim(),
-        price: r[2],
-        stock_quantity: r[3],
-        categorytitle: String(r[4] || "").trim(),
-        brandtitle: String(r[5] || "").trim(),
-        currency: String(r[6] || "").trim(),
-        imageUrls,
-      };
-
-      if (!obj.title) {
-        failures.push({ rowNumber: excelRowNumber, reason: "Title is required" });
+      if (!name) {
+        failures.push({ rowNumber: excelRowNumber, reason: "Name is required" });
         continue;
       }
-      if (!obj.categorytitle) {
-        failures.push({
-          rowNumber: excelRowNumber,
-          reason: "Category title is required",
-        });
+      if (!category) {
+        failures.push({ rowNumber: excelRowNumber, reason: "Category is required" });
         continue;
       }
-      if (!obj.brandtitle) {
-        failures.push({
-          rowNumber: excelRowNumber,
-          reason: "Brand title is required",
-        });
+      if (!brand) {
+        failures.push({ rowNumber: excelRowNumber, reason: "Brand is required" });
         continue;
       }
-      if (!obj.currency) {
-        failures.push({
-          rowNumber: excelRowNumber,
-          reason: "Currency is required",
-        });
+      if (!currency) {
+        failures.push({ rowNumber: excelRowNumber, reason: "Currency is required" });
         continue;
       }
 
-      const priceNum = parseFloat(String(obj.price).trim());
-      if (!Number.isFinite(priceNum)) {
-        failures.push({ rowNumber: excelRowNumber, reason: "Invalid price" });
+      const sellingPriceNum = parseFloat(sellingPrice);
+      if (!Number.isFinite(sellingPriceNum) || sellingPriceNum <= 0) {
+        failures.push({ rowNumber: excelRowNumber, reason: "Invalid selling price" });
         continue;
       }
 
-      const stockNum = parseInt(String(obj.stock_quantity).trim(), 10);
-      if (!Number.isFinite(stockNum)) {
-        failures.push({
-          rowNumber: excelRowNumber,
-          reason: "Invalid stock_quantity",
-        });
+      const stockNum = parseInt(stock, 10);
+      if (!Number.isFinite(stockNum) || stockNum < 0) {
+        failures.push({ rowNumber: excelRowNumber, reason: "Invalid stock" });
         continue;
       }
+
+      const costNum = cost ? parseFloat(cost) : undefined;
+      if (cost && (!Number.isFinite(costNum) || costNum! < 0)) {
+        failures.push({ rowNumber: excelRowNumber, reason: "Invalid cost" });
+        continue;
+      }
+
+      const freightNum = freight ? parseFloat(freight) : undefined;
+      if (freight && (!Number.isFinite(freightNum) || freightNum! < 0)) {
+        failures.push({ rowNumber: excelRowNumber, reason: "Invalid freight" });
+        continue;
+      }
+
+      const discountNum = discount ? parseFloat(discount) : undefined;
+      if (discount && (!Number.isFinite(discountNum) || discountNum! < 0)) {
+        failures.push({ rowNumber: excelRowNumber, reason: "Invalid discount" });
+        continue;
+      }
+
+      const weightNum = weight ? parseFloat(weight) : undefined;
+      if (weight && (!Number.isFinite(weightNum) || weightNum! < 0)) {
+        failures.push({ rowNumber: excelRowNumber, reason: "Invalid weight" });
+        continue;
+      }
+
+      const lengthNum = length ? parseFloat(length) : undefined;
+      if (length && (!Number.isFinite(lengthNum) || lengthNum! < 0)) {
+        failures.push({ rowNumber: excelRowNumber, reason: "Invalid length" });
+        continue;
+      }
+
+      const widthNum = width ? parseFloat(width) : undefined;
+      if (width && (!Number.isFinite(widthNum) || widthNum! < 0)) {
+        failures.push({ rowNumber: excelRowNumber, reason: "Invalid width" });
+        continue;
+      }
+
+      const heightNum = height ? parseFloat(height) : undefined;
+      if (height && (!Number.isFinite(heightNum) || heightNum! < 0)) {
+        failures.push({ rowNumber: excelRowNumber, reason: "Invalid height" });
+        continue;
+      }
+
+      const bpQuantityNum = bpQuantity ? parseInt(bpQuantity, 10) : undefined;
+      if (bpQuantity && (!Number.isFinite(bpQuantityNum) || bpQuantityNum! <= 0)) {
+        failures.push({ rowNumber: excelRowNumber, reason: "Invalid bp quantity" });
+        continue;
+      }
+
+      const bpPriceNum = bpPricePerProduct ? parseFloat(bpPricePerProduct) : undefined;
+      if (bpPricePerProduct && (!Number.isFinite(bpPriceNum) || bpPriceNum! <= 0)) {
+        failures.push({ rowNumber: excelRowNumber, reason: "Invalid bp price per product" });
+        continue;
+      }
+
+      const imageUrls = [image1, image2, image3, image4, image5].filter((s) => !!s);
 
       validRows.push({
         rowNumber: excelRowNumber,
-        title: obj.title,
-        description: obj.description || undefined,
-        price: priceNum,
-        stock_quantity: stockNum,
-        categorytitle: obj.categorytitle,
-        brandtitle: obj.brandtitle,
-        currency: obj.currency,
-        imageUrls: Array.isArray(obj.imageUrls) ? obj.imageUrls.slice(0, 5) : [],
-        embeddedImages:
-          (Array.isArray(obj.imageUrls) && obj.imageUrls.length > 0)
-            ? []
-            : embeddedImagesByRow.get(excelRowNumber) ||
-              (fallbackMediaImage ? [fallbackMediaImage] : []),
+        name,
+        description: description || undefined,
+        category,
+        brand,
+        supplier: supplier || undefined,
+        warehouse: warehouse || undefined,
+        tax: tax || undefined,
+        size: size || undefined,
+        model: model || undefined,
+        year: year || undefined,
+        customVariant: customVariant || undefined,
+        variantName: variantName || undefined,
+        retail: retail || undefined,
+        wholesale: wholesale || undefined,
+        sellingPrice: sellingPriceNum,
+        cost: costNum,
+        freight: freightNum,
+        currency,
+        discount: discountNum,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        bpQuantity: bpQuantityNum,
+        bpPricePerProduct: bpPriceNum,
+        stock: stockNum,
+        weight: weightNum,
+        length: lengthNum,
+        width: widthNum,
+        height: heightNum,
+        video: video || undefined,
+        imageUrls: imageUrls.slice(0, 5),
       });
     }
 
+    // Pre-fetch all categories and brands
     const uniqueCategoryKeys = Array.from(
-      new Set(validRows.map((r) => this.normalizeNameKey(r.categorytitle)).filter(Boolean))
+      new Set(validRows.map((r) => this.normalizeNameKey(r.category)).filter(Boolean))
     );
     const uniqueBrandKeys = Array.from(
-      new Set(validRows.map((r) => this.normalizeNameKey(r.brandtitle)).filter(Boolean))
+      new Set(validRows.map((r) => this.normalizeNameKey(r.brand)).filter(Boolean))
     );
 
     const categoryMap = new Map<string, Category>();
     const brandMap = new Map<string, Brand>();
 
     for (const key of uniqueCategoryKeys) {
-      const original = validRows.find(
-        (r) => this.normalizeNameKey(r.categorytitle) === key
-      )?.categorytitle;
+      const original = validRows.find((r) => this.normalizeNameKey(r.category) === key)?.category;
       if (!original) continue;
       const c = await this.ensureCategoryByName(original);
       categoryMap.set(key, c);
     }
 
     for (const key of uniqueBrandKeys) {
-      const original = validRows.find(
-        (r) => this.normalizeNameKey(r.brandtitle) === key
-      )?.brandtitle;
+      const original = validRows.find((r) => this.normalizeNameKey(r.brand) === key)?.brand;
       if (!original) continue;
       const b = await this.ensureBrandByName(original);
       brandMap.set(key, b);
     }
 
-    type PreparedRow = {
-      rowNumber: number;
-      title: string;
-      description?: string;
-      price: number;
-      stock_quantity: number;
-      category: Category;
-      brand: Brand;
-      currency: string;
-      skuPrefix: string;
-      imageUrls?: string[];
-      embeddedImages?: Array<{ buffer: Buffer; mimetype: string; originalname: string }>;
-    };
+    // Pre-fetch default variant types (size, model, year)
+    const defaultVariantTypes = await this.variantTypeRepository
+      .createQueryBuilder("vt")
+      .where("LOWER(vt.name) IN (:...names)", { names: ["size", "model", "year"] })
+      .getMany();
 
-    const prepared: PreparedRow[] = [];
-    for (const r of validRows) {
-      const c = categoryMap.get(this.normalizeNameKey(r.categorytitle));
-      if (!c) {
-        failures.push({
-          rowNumber: r.rowNumber,
-          reason: `Category not found/created: ${r.categorytitle}`,
-        });
-        continue;
-      }
-      const b = brandMap.get(this.normalizeNameKey(r.brandtitle));
-      if (!b) {
-        failures.push({
-          rowNumber: r.rowNumber,
-          reason: `Brand not found/created: ${r.brandtitle}`,
-        });
-        continue;
-      }
+    const sizeVariantType = defaultVariantTypes.find((vt) => vt.name.toLowerCase() === "size");
+    const modelVariantType = defaultVariantTypes.find((vt) => vt.name.toLowerCase() === "model");
+    const yearVariantType = defaultVariantTypes.find((vt) => vt.name.toLowerCase() === "year");
 
-      const brandSeg = this.sanitizeSkuSegment(b.name);
-      const catSeg = this.sanitizeSkuSegment(c.name);
-      if (!brandSeg || !catSeg) {
-        failures.push({
-          rowNumber: r.rowNumber,
-          reason: "Invalid brand/category for SKU generation",
-        });
-        continue;
-      }
+    // Pre-fetch customer visibility groups (retail, wholesale)
+    const cvgGroups = await this.customerVisibilityGroupRepository
+      .createQueryBuilder("cvg")
+      .where("LOWER(cvg.type) IN (:...names)", { names: ["retail", "wholesale"] })
+      .getMany();
 
-      prepared.push({
-        rowNumber: r.rowNumber,
-        title: r.title,
-        description: r.description,
-        price: r.price,
-        stock_quantity: r.stock_quantity,
-        category: c,
-        brand: b,
-        currency: r.currency,
-        skuPrefix: `${brandSeg}-${catSeg}`,
-        imageUrls: (r.imageUrls || []).slice(0, 5),
-        embeddedImages: (r.embeddedImages || []).slice(0, 5),
-      });
-    }
+    const retailCvg = cvgGroups.find((cvg) => cvg.type.toLowerCase() === "retail");
+    const wholesaleCvg = cvgGroups.find((cvg) => cvg.type.toLowerCase() === "wholesale");
 
-    const prefixes = Array.from(new Set(prepared.map((p) => p.skuPrefix)));
+    // Generate SKUs
+    const prefixes = Array.from(
+      new Set(
+        validRows
+          .map((r) => {
+            const c = categoryMap.get(this.normalizeNameKey(r.category));
+            const b = brandMap.get(this.normalizeNameKey(r.brand));
+            if (!c || !b) return null;
+            const brandSeg = this.sanitizeSkuSegment(b.name);
+            const catSeg = this.sanitizeSkuSegment(c.name);
+            return brandSeg && catSeg ? `${brandSeg}-${catSeg}` : null;
+          })
+          .filter(Boolean) as string[]
+      )
+    );
+
     const nextSeqMap = new Map<string, number>();
     for (const prefix of prefixes) {
       const last = await this.productRepository
@@ -1327,138 +1430,234 @@ export class ProductsService {
       nextSeqMap.set(prefix, this.parseSkuSequence((last as any)?.sku) + 1);
     }
 
-    const preparedWithSku = prepared.map((p) => {
-      const next = nextSeqMap.get(p.skuPrefix) || 1;
-      nextSeqMap.set(p.skuPrefix, next + 1);
-      const sku = `${p.skuPrefix}-${String(next).padStart(4, "0")}`;
-      return { ...p, sku };
-    });
-
+    // Process in chunks of 10
     const chunkSize = 10;
-    const chunks = this.chunkArray(preparedWithSku, chunkSize);
+    const chunks = this.chunkArray(validRows, chunkSize);
 
     let createdCount = 0;
     const createdSkus: string[] = [];
 
     for (const chunk of chunks) {
-      const hasAnyImages = chunk.some(
-        (r) => (r.imageUrls?.length ?? 0) > 0 || (r.embeddedImages?.length ?? 0) > 0
-      );
-
-      const entities = chunk.map((r) => ({
-        title: r.title,
-        description: r.description || null,
-        price: r.price,
-        stock_quantity: r.stock_quantity,
-        category_id: r.category.id,
-        brand_id: r.brand.id,
-        currency: r.currency,
-        sku: (r as any).sku,
-        product_img_url: (r.imageUrls?.[0] as any) || null,
-      }));
-
-      if (!hasAnyImages) {
+      for (const row of chunk) {
         try {
-          await this.productRepository.insert(entities as any);
-          createdCount += entities.length;
-          createdSkus.push(...chunk.map((c: any) => c.sku));
-          continue;
-        } catch {
-          for (let i = 0; i < entities.length; i++) {
-            try {
-              await this.productRepository.insert(entities[i] as any);
-              createdCount += 1;
-              createdSkus.push((chunk[i] as any).sku);
-            } catch (e: any) {
-              failures.push({
-                rowNumber: chunk[i].rowNumber,
-                reason: e?.message || "Failed to insert product",
-              });
+          const c = categoryMap.get(this.normalizeNameKey(row.category));
+          if (!c) {
+            failures.push({
+              rowNumber: row.rowNumber,
+              reason: `Category not found: ${row.category}`,
+            });
+            continue;
+          }
+
+          const b = brandMap.get(this.normalizeNameKey(row.brand));
+          if (!b) {
+            failures.push({
+              rowNumber: row.rowNumber,
+              reason: `Brand not found: ${row.brand}`,
+            });
+            continue;
+          }
+
+          const brandSeg = this.sanitizeSkuSegment(b.name);
+          const catSeg = this.sanitizeSkuSegment(c.name);
+          if (!brandSeg || !catSeg) {
+            failures.push({
+              rowNumber: row.rowNumber,
+              reason: "Invalid brand/category for SKU generation",
+            });
+            continue;
+          }
+
+          const skuPrefix = `${brandSeg}-${catSeg}`;
+          const next = nextSeqMap.get(skuPrefix) || 1;
+          nextSeqMap.set(skuPrefix, next + 1);
+          const sku = `${skuPrefix}-${String(next).padStart(4, "0")}`;
+
+          const parsedStartDate = this.parseExcelDateCell(row.startDate);
+          const parsedEndDate = this.parseExcelDateCell(row.endDate);
+
+          // Lookup tax by name (not auto-create)
+          let taxId: string | undefined = undefined;
+          if (row.tax) {
+            const taxEntity = await this.taxRepository
+              .createQueryBuilder("t")
+              .where("LOWER(t.title) = LOWER(:title)", { title: row.tax })
+              .getOne();
+            if (taxEntity) {
+              taxId = taxEntity.id;
             }
           }
-          continue;
-        }
-      }
 
-      for (let i = 0; i < entities.length; i++) {
-        const row = chunk[i];
-        try {
+          // Lookup supplier by name (not auto-create)
+          let supplierId: string | undefined = undefined;
+          if (row.supplier) {
+            const supplierEntity = await this.supplierRepository
+              .createQueryBuilder("s")
+              .where("LOWER(s.supplier_name) = LOWER(:name)", { name: row.supplier })
+              .getOne();
+            if (supplierEntity) {
+              supplierId = supplierEntity.id;
+            }
+          }
+
+          // Lookup warehouse by name (not auto-create)
+          let warehouseId: string | undefined = undefined;
+          if (row.warehouse) {
+            const warehouseEntity = await this.warehouseRepository
+              .createQueryBuilder("w")
+              .where("LOWER(w.name) = LOWER(:name)", { name: row.warehouse })
+              .getOne();
+            if (warehouseEntity) {
+              warehouseId = warehouseEntity.id;
+            }
+          }
+
+          // Create product
+          const productData: any = {
+            title: row.name,
+            description: row.description || null,
+            price: row.sellingPrice,
+            cost: row.cost || null,
+            freight: row.freight || null,
+            stock_quantity: row.stock,
+            category_id: c.id,
+            brand_id: b.id,
+            currency: row.currency,
+            sku,
+            product_img_url: row.imageUrls?.[0] || null,
+            product_video_url: row.video || null,
+            discount: row.discount || 0,
+            start_discount_date: parsedStartDate,
+            end_discount_date: parsedEndDate,
+            weight: row.weight || null,
+            length: row.length || null,
+            width: row.width || null,
+            height: row.height || null,
+            tax_id: taxId || null,
+            supplier_id: supplierId || null,
+            warehouse_id: warehouseId || null,
+            total_price: row.sellingPrice,
+          };
+
           const res = await this.productRepository
             .createQueryBuilder()
             .insert()
             .into(Product)
-            .values(entities[i] as any)
+            .values(productData)
             .returning(["id"])
             .execute();
 
-          createdCount += 1;
-          createdSkus.push((row as any).sku);
-
           const insertedId =
-            (res as any)?.identifiers?.[0]?.id ||
-            (res as any)?.generatedMaps?.[0]?.id;
+            (res as any)?.identifiers?.[0]?.id || (res as any)?.generatedMaps?.[0]?.id;
 
-          if (insertedId) {
-            const urls = (row.imageUrls || []).filter(Boolean).slice(0, 5);
-            if (urls.length > 0) {
-              const imgs = urls.map((u: string, idx: number) =>
-                this.productImageRepository.create({
-                  product_id: String(insertedId),
-                  url: u,
-                  file_name: this.extractProductsFileNameFromUrl(u) || u,
-                  sort_order: idx + 1,
-                })
-              );
-              try {
-                await this.productImageRepository.save(imgs);
-                await this.productRepository.update(
-                  { id: String(insertedId) } as any,
-                  { product_img_url: urls[0] } as any
-                );
-              } catch (e: any) {
-                failures.push({
-                  rowNumber: row.rowNumber,
-                  reason: e?.message || "Failed to save product images",
-                });
-              }
-            } else {
-              const embedded = (row.embeddedImages || []).filter(Boolean).slice(0, 5);
-              if (embedded.length > 0) {
-                try {
-                  const uploaded = await this.uploadProductImagesToFilesBackend(
-                    String(insertedId),
-                    embedded,
-                    authorizationHeader
-                  );
+          if (!insertedId) {
+            failures.push({
+              rowNumber: row.rowNumber,
+              reason: "Failed to insert product",
+            });
+            continue;
+          }
 
-                  const imgs = uploaded.map((u, idx) =>
-                    this.productImageRepository.create({
-                      product_id: String(insertedId),
-                      url: u.url,
-                      file_name: u.fileName,
-                      sort_order: idx + 1,
-                    })
-                  );
-                  await this.productImageRepository.save(imgs);
-                  await this.productRepository.update(
-                    { id: String(insertedId) } as any,
-                    { product_img_url: uploaded[0]?.url || null } as any
-                  );
-                } catch (e: any) {
-                  failures.push({
-                    rowNumber: row.rowNumber,
-                    reason:
-                      e?.message ||
-                      "Image upload failed (product created without image)",
-                  });
-                }
-              }
+          createdCount += 1;
+          createdSkus.push(sku);
+
+          // Handle variants (default: size, model, year)
+          const variantsToCreate: Array<{ vtype_id: string; value: string }> = [];
+
+          if (row.size && sizeVariantType) {
+            variantsToCreate.push({ vtype_id: sizeVariantType.id, value: row.size });
+          }
+          if (row.model && modelVariantType) {
+            variantsToCreate.push({ vtype_id: modelVariantType.id, value: row.model });
+          }
+          if (row.year && yearVariantType) {
+            variantsToCreate.push({ vtype_id: yearVariantType.id, value: row.year });
+          }
+
+          // Handle custom variant
+          if (row.customVariant && row.variantName) {
+            // Find or create custom variant type
+            let customVariantType = await this.variantTypeRepository
+              .createQueryBuilder("vt")
+              .where("LOWER(vt.name) = LOWER(:name)", { name: row.customVariant })
+              .getOne();
+
+            if (!customVariantType) {
+              customVariantType = await this.variantTypeRepository.save({
+                name: row.customVariant,
+              } as any);
             }
+
+            if (customVariantType) {
+              variantsToCreate.push({
+                vtype_id: customVariantType.id,
+                value: row.variantName,
+              });
+            }
+          }
+
+          if (variantsToCreate.length > 0) {
+            const variantEntities = variantsToCreate.map((v) =>
+              this.variantRepository.create({
+                vtype_id: v.vtype_id,
+                value: v.value,
+                product_id: String(insertedId),
+              })
+            );
+            await this.variantRepository.save(variantEntities);
+          }
+
+          // Handle customer visibility groups (retail/wholesale)
+          const cvgIds: string[] = [];
+          if (this.parseBooleanCell(row.retail) && retailCvg) {
+            cvgIds.push(retailCvg.id);
+          }
+          if (this.parseBooleanCell(row.wholesale) && wholesaleCvg) {
+            cvgIds.push(wholesaleCvg.id);
+          }
+
+          if (cvgIds.length > 0) {
+            const cvgProductEntities = cvgIds.map((cvg_id) =>
+              this.cvgProductRepository.create({
+                cvg_id,
+                product_id: String(insertedId),
+              })
+            );
+            await this.cvgProductRepository.save(cvgProductEntities);
+          }
+
+          // Handle bulk prices (only if both quantity and price are provided)
+          if (
+            row.bpQuantity &&
+            row.bpPricePerProduct &&
+            Number.isFinite(row.bpQuantity) &&
+            Number.isFinite(row.bpPricePerProduct)
+          ) {
+            const bulkPriceEntity = this.bulkPriceRepository.create({
+              quantity: row.bpQuantity,
+              price_per_product: row.bpPricePerProduct,
+              product_id: String(insertedId),
+            });
+            await this.bulkPriceRepository.save(bulkPriceEntity);
+          }
+
+          // Handle additional images (image2-image5) in product_images table
+          if (row.imageUrls && row.imageUrls.length > 1) {
+            const additionalImages = row.imageUrls.slice(1, 5); // Skip image1 (already in product_img_url)
+            const imgs = additionalImages.map((url, idx) =>
+              this.productImageRepository.create({
+                product_id: String(insertedId),
+                url: url,
+                file_name: this.extractProductsFileNameFromUrl(url) || url,
+                sort_order: idx + 2, // Start from 2 since image1 is the featured image
+              })
+            );
+            await this.productImageRepository.save(imgs);
           }
         } catch (e: any) {
           failures.push({
             rowNumber: row.rowNumber,
-            reason: e?.message || "Failed to insert product",
+            reason: e?.message || "Failed to create product",
           });
         }
       }

@@ -11,9 +11,12 @@ import { VariantType } from "../entities/variant-type.entity";
 import { CvgProduct } from "../entities/cvg-product.entity";
 import { BulkPrice } from "../entities/bulk-price.entity";
 import { CustomerVisibilityGroup } from "../entities/customer-visibility-group.entity";
+import { Tax } from "../entities/tax.entity";
+import { Supplier } from "../entities/supplier.entity";
+import { Warehouse } from "../entities/warehouse.entity";
 
 @NestModule({
-  imports: [TypeOrmModule.forFeature([Product, ProductImage, Category, Brand, Variant, VariantType, CvgProduct, BulkPrice, CustomerVisibilityGroup])],
+  imports: [TypeOrmModule.forFeature([Product, ProductImage, Category, Brand, Variant, VariantType, CvgProduct, BulkPrice, CustomerVisibilityGroup, Tax, Supplier, Warehouse])],
   controllers: [ProductsController],
   providers: [ProductsService],
   exports: [ProductsService],
