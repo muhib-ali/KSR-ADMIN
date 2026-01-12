@@ -30,6 +30,7 @@ import {
   ApiQuery,
   ApiConsumes,
 } from "@nestjs/swagger";
+import { SkipThrottle } from "@nestjs/throttler";
 import { ProductsService } from "./products.service";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
@@ -93,7 +94,7 @@ export class ProductsController {
       storage: memoryStorage(),
       limits: {
         fileSize: 5 * 1024 * 1024,
-        files: 4, // Max 4 gallery images (featured image is separate)
+        files: 10, // Max 10 gallery images (featured image is separate)
       },
       fileFilter: (req, file, cb) => {
         const allowed = ["image/jpeg", "image/png", "image/webp"];
@@ -376,6 +377,7 @@ export class ProductsController {
   }
 
   @Get("getAll")
+  @SkipThrottle()
   @ApiOperation({ summary: "Get all products with pagination" })
   @ApiResponse({
     status: 200,
@@ -400,7 +402,16 @@ export class ProductsController {
     type: String,
     description: "Search by title/sku/currency/category/brand",
   })
+  @ApiQuery({
+    name: "variantTypes",
+    required: false,
+    type: Boolean,
+    description: "Get default variant types instead of products",
+  })
   async getAll(@Query(ValidationPipe) queryDto: SearchPaginationDto) {
+    if (queryDto.variantTypes) {
+      return this.productsService.getDefaultVariantTypes();
+    }
     return this.productsService.getAll(queryDto, queryDto.search);
   }
 
@@ -438,5 +449,43 @@ export class ProductsController {
     @Body(ValidationPipe) deleteProductDto: DeleteProductDto
   ) {
     return this.productsService.delete(deleteProductDto, req.headers.authorization);
+  }
+
+  @Post(":productId/custom-variant-types")
+  @ApiOperation({ summary: "Create custom variant type for a product" })
+  @ApiParam({ name: "productId", description: "Product ID", type: String })
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["name"],
+      properties: {
+        name: { type: "string", example: "Color" },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: "Custom variant type created successfully",
+  })
+  async createCustomVariantType(
+    @Param("productId") productId: string,
+    @Body("name") name: string
+  ) {
+    return this.productsService.createCustomVariantType(productId, name);
+  }
+
+  @Delete(":productId/custom-variant-types/:vtypeId")
+  @ApiOperation({ summary: "Unlink/delete custom variant type from a product" })
+  @ApiParam({ name: "productId", description: "Product ID", type: String })
+  @ApiParam({ name: "vtypeId", description: "Variant Type ID", type: String })
+  @ApiResponse({
+    status: 200,
+    description: "Custom variant type unlinked successfully",
+  })
+  async unlinkCustomVariantType(
+    @Param("productId") productId: string,
+    @Param("vtypeId") vtypeId: string
+  ) {
+    return this.productsService.unlinkCustomVariantType(productId, vtypeId);
   }
 }

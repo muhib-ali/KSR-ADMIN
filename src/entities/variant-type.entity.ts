@@ -4,7 +4,7 @@ import { Variant } from "./variant.entity";
 
 @Entity("variant_types")
 export class VariantType extends BaseAuditColumns {
-  @Column({ type: "varchar", length: 50, unique: true })
+  @Column({ type: "varchar", length: 50 })
   name: string;
 
   @OneToMany(() => Variant, (variant) => variant.variantType)

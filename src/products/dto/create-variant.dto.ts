@@ -19,9 +19,10 @@ export class CreateVariantDto {
   @ApiProperty({
     description: "Variant value",
     example: "XL",
+    required: false,
   })
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   value: string;
 
   @ApiProperty({
