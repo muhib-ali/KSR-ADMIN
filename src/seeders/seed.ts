@@ -168,6 +168,18 @@ async function seed() {
         slug:"promo-codes",
         description:"Manage promo codes",
         is_active:true
+      },
+      {
+        title: "Orders",
+        slug: "orders",
+        description: "Manage orders",
+        is_active: true,
+      },
+      {
+        title: "Reviews",
+        slug: "reviews",
+        description: "Manage customer reviews",
+        is_active: true,
       }
     ];
 
@@ -190,6 +202,8 @@ async function seed() {
       { slug: "create", title: "Create", description: "Create" },
       { slug: "update", title: "Update", description: "Update" },
       { slug: "getById", title: "Get By Id", description: "Get by id" },
+      { slug: "accept", title: "Accept", description: "Accept" },
+      { slug: "reject", title: "Reject", description: "Reject" },
       {
         slug: "getAllPermissionsByRoleId",
         title: "Get All Permissions By Role Id",
@@ -264,6 +278,8 @@ async function seed() {
       { slug: "create", title: "Create", description: "Create" },
       { slug: "update", title: "Update", description: "Update" },
       { slug: "delete", title: "Delete", description: "Delete" },
+      // Reviews-specific permissions
+      { slug: "approve", title: "Approve", description: "Approve/reject reviews" },
     ];
 
     for (const module of modules) {
@@ -395,6 +411,8 @@ async function seed() {
         "getAll",
         "getById",
         "update",
+        "accept",
+        "reject",
         "getAllRoles",
         "getAllModules",
         "getAllCategories",
@@ -403,6 +421,8 @@ async function seed() {
         "getAllCustomerVisibilityGroups",
         "create", // For variant-types create
         "delete", // For variant-types delete
+        "approve", // For reviews approve/reject
+        "delete", // For reviews delete
       ];
 
       for (const permission of permissions) {

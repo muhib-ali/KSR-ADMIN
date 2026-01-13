@@ -17,6 +17,7 @@ import { Warehouse } from "./warehouse.entity";
 import { Variant } from "./variant.entity";
 import { CvgProduct } from "./cvg-product.entity";
 import { BulkPrice } from "./bulk-price.entity";
+import { OrderItem } from "./order-item.entity";
 
 @Entity("products")
 @Unique(["sku"])
@@ -122,4 +123,7 @@ export class Product extends BaseAuditColumns {
 
   @OneToMany(() => BulkPrice, (bulkPrice) => bulkPrice.product)
   bulkPrices: BulkPrice[];
+  
+  @OneToMany(() => OrderItem, (orderItem) => orderItem.product)
+  order_items: OrderItem[];
 }

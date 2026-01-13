@@ -25,6 +25,8 @@ import { WarehousesModule } from "./warehouses/warehouses.module";
 import { VariantTypesModule } from "./variant-types/variant-types.module";
 import { PromoCodesModule } from "./promo-codes/promo-codes.module";
 import { CurrencyModule } from "./currency/currency.module";
+import { OrdersModule } from "./orders/orders.module";
+import { ReviewsModule } from "./reviews/reviews.module";
 import { PermissionMiddleware } from "./middleware/permission.middleware";
 import { GlobalExceptionFilter } from "./filters/global-exception.filter";
 import { ThrottlerGuard } from "@nestjs/throttler";
@@ -123,6 +125,8 @@ import { OauthToken } from "./entities/oauth-token.entity";
     PromoCodesModule,
     CurrencyModule,
     HealthModule,
+    OrdersModule,
+    ReviewsModule,
   ],
   providers: [
     // Global exception filter
