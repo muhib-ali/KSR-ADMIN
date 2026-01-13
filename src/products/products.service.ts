@@ -649,7 +649,7 @@ export class ProductsService {
       );
     }
 
-    const list = (files || []).filter(Boolean).slice(0, 5);
+    const list = (files || []).filter(Boolean).slice(0, 10);
     if (list.length < 1) {
       throw new BadRequestException("Image file(s) are required");
     }
@@ -706,7 +706,7 @@ export class ProductsService {
             sortOrder: Number(it?.sortOrder ?? it?.sort_order ?? idx + 1),
           }))
           .filter((it: any) => it.url && it.fileName)
-          .slice(0, 5);
+          .slice(0, 10);
 
         if (out.length < 1) {
           throw new BadRequestException(
@@ -811,9 +811,11 @@ export class ProductsService {
       where: { product_id: productId },
     });
 
-    const list = (files || []).slice(0, 4); // Max 4 gallery images (featured image is separate)
-    if (existingCount + list.length > 4) {
-      throw new BadRequestException("Maximum 4 gallery images are allowed per product (featured image is separate)");
+    const list = (files || []).slice(0, 10); // Max 4 gallery images (featured image is separate)
+    if (existingCount + list.length > 10) {
+      throw new BadRequestException(
+        "Maximum 10 gallery images are allowed per product (featured image is separate)"
+      );
     }
 
     const uploaded = await this.uploadProductImagesToFilesBackend(
@@ -1105,6 +1107,11 @@ export class ProductsService {
       "image3",
       "image4",
       "image5",
+      "image6",
+      "image7",
+      "image8",
+      "image9",
+      "image10",
     ];
 
     let rows: any[][];
@@ -1237,6 +1244,11 @@ export class ProductsService {
       const image3 = normalizeCell(r[31]);
       const image4 = normalizeCell(r[32]);
       const image5 = normalizeCell(r[33]);
+      const image6 = normalizeCell(r[34]);
+      const image7 = normalizeCell(r[35]);
+      const image8 = normalizeCell(r[36]);
+      const image9 = normalizeCell(r[37]);
+      const image10 = normalizeCell(r[38]);
 
       if (!name) {
         failures.push({ rowNumber: excelRowNumber, reason: "Name is required" });
@@ -1321,7 +1333,18 @@ export class ProductsService {
         continue;
       }
 
-      const imageUrls = [image1, image2, image3, image4, image5].filter((s) => !!s);
+      const imageUrls = [
+        image1,
+        image2,
+        image3,
+        image4,
+        image5,
+        image6,
+        image7,
+        image8,
+        image9,
+        image10,
+      ].filter((s) => !!s);
 
       validRows.push({
         rowNumber: excelRowNumber,
@@ -1354,7 +1377,7 @@ export class ProductsService {
         width: widthNum,
         height: heightNum,
         video: video || undefined,
-        imageUrls: imageUrls.slice(0, 5),
+        imageUrls: imageUrls.slice(0, 10),
       });
     }
 
@@ -1643,7 +1666,7 @@ export class ProductsService {
 
           // Handle additional images (image2-image5) in product_images table
           if (row.imageUrls && row.imageUrls.length > 1) {
-            const additionalImages = row.imageUrls.slice(1, 5); // Skip image1 (already in product_img_url)
+            const additionalImages = row.imageUrls.slice(1, 10); // Skip image1 (already in product_img_url)
             const imgs = additionalImages.map((url, idx) =>
               this.productImageRepository.create({
                 product_id: String(insertedId),
@@ -2270,6 +2293,125 @@ export class ProductsService {
       "Product video uploaded successfully",
       "Product",
       201
+    );
+  }
+
+  async createCustomVariantType(
+    productId: string,
+    name: string
+  ): Promise<ApiResponse<{ id: string; name: string }>> {
+    if (!name || !name.trim()) {
+      throw new BadRequestException("Variant type name is required");
+    }
+
+    const trimmedName = name.trim();
+
+    const product = await this.productRepository.findOne({
+      where: { id: productId },
+    });
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+
+    const existingVariants = await this.variantRepository
+      .createQueryBuilder("variant")
+      .leftJoinAndSelect("variant.variantType", "variantType")
+      .where("variant.product_id = :productId", { productId })
+      .andWhere("LOWER(variantType.name) = LOWER(:name)", { name: trimmedName })
+      .getMany();
+
+    if (existingVariants.length > 0) {
+      return ResponseHelper.success(
+        {
+          id: existingVariants[0].variantType.id,
+          name: existingVariants[0].variantType.name,
+        },
+        "Variant type already exists for this product",
+        "VariantType",
+        200
+      );
+    }
+
+    // Check if variant type with this name already exists globally (to avoid duplicate key error)
+    let savedVariantType = await this.variantTypeRepository.findOne({
+      where: { name: trimmedName },
+    });
+
+    // If variant type doesn't exist globally, create it
+    if (!savedVariantType) {
+      const newVariantType = this.variantTypeRepository.create({
+        name: trimmedName,
+      });
+      savedVariantType = await this.variantTypeRepository.save(newVariantType);
+    }
+
+    const newVariant = this.variantRepository.create({
+      vtype_id: savedVariantType.id,
+      product_id: productId,
+      value: "",
+    });
+    await this.variantRepository.save(newVariant);
+
+    return ResponseHelper.success(
+      { id: savedVariantType.id, name: savedVariantType.name },
+      "Custom variant type created successfully",
+      "VariantType",
+      201
+    );
+  }
+
+  async unlinkCustomVariantType(
+    productId: string,
+    vtypeId: string
+  ): Promise<ApiResponse<null>> {
+    const product = await this.productRepository.findOne({
+      where: { id: productId },
+    });
+    if (!product) {
+      throw new NotFoundException("Product not found");
+    }
+
+    const variant = await this.variantRepository.findOne({
+      where: { product_id: productId, vtype_id: vtypeId },
+    });
+
+    if (!variant) {
+      throw new NotFoundException(
+        "Variant type not found for this product"
+      );
+    }
+
+    await this.variantRepository.remove(variant);
+
+    const remainingVariants = await this.variantRepository.find({
+      where: { vtype_id: vtypeId },
+    });
+
+    if (remainingVariants.length === 0) {
+      await this.variantTypeRepository.delete(vtypeId);
+    }
+
+    return ResponseHelper.success(
+      null,
+      "Custom variant type unlinked successfully",
+      "VariantType",
+      200
+    );
+  }
+
+  async getDefaultVariantTypes(): Promise<ApiResponse<VariantType[]>> {
+    const defaultNames = ["size", "model", "year"];
+    
+    const defaultVariantTypes = await this.variantTypeRepository
+      .createQueryBuilder("variantType")
+      .where("LOWER(variantType.name) IN (:...names)", { names: defaultNames })
+      .getMany();
+
+    return ResponseHelper.success(
+      defaultVariantTypes,
+      "Default variant types retrieved successfully",
+      "VariantType",
+      200
     );
   }
 }

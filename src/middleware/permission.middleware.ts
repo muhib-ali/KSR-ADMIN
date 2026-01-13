@@ -76,7 +76,11 @@ export class PermissionMiddleware implements NestMiddleware {
       const permissionSlugToCheck =
         moduleSlug === "products" && permissionSlug === "bulk-upload"
           ? "create"
-          : moduleSlug === "products" && (permissionSlug === "images" || permissionSlug === "video" || permissionSlug === "featured-image")
+          : moduleSlug === "products" &&
+              (permissionSlug === "images" ||
+                permissionSlug === "video" ||
+                permissionSlug === "featured-image" ||
+                permissionSlug === "custom-variant-types")
             ? "update"
           : permissionSlug;
 
@@ -187,7 +191,15 @@ export class PermissionMiddleware implements NestMiddleware {
     }
 
     const moduleSlug = pathParts[0]; // e.g., "roles", "modules", "users"
-    const permissionSlug = pathParts[1]; // e.g., "create", "update", "getById", "abcd", "bjsda"
+    let permissionSlug = pathParts[1]; // e.g., "create", "update", "getById"
+
+    // Handle dynamic routes where the 2nd segment is an ID (UUID), and the real action is the 3rd segment.
+    // Example: /products/:productId/custom-variant-types
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (permissionSlug && uuidRegex.test(permissionSlug)) {
+      permissionSlug = pathParts[2] ?? null;
+    }
 
     // Dynamic handling - whatever comes after the module is the permission slug
     // Examples:
