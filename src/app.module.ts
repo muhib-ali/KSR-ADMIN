@@ -7,7 +7,6 @@ import { TerminusModule } from "@nestjs/terminus";
 import { APP_FILTER, APP_GUARD } from "@nestjs/core";
 import { DataSource } from "typeorm";
 import { redisStore } from "cache-manager-redis-yet";
-import { appDataSourceOptions } from "./config/database.config";
 import { AuthModule } from "./auth/auth.module";
 import { RolesModule } from "./roles/roles.module";
 import { ModulesModule } from "./modules/modules.module";
@@ -99,7 +98,22 @@ import { OauthToken } from "./entities/oauth-token.entity";
     // Database
     TypeOrmModule.forRootAsync({
       useFactory: async () => ({
-        ...appDataSourceOptions,
+        type: "postgres" as const,
+        host: process.env.DB_HOST,
+        port: parseInt(process.env.DB_PORT, 10),
+        username: process.env.DB_USERNAME,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME,
+        schema: "public",
+        synchronize: false,
+        ssl:
+          process.env.DB_SSL === "true"
+            ? { rejectUnauthorized: false }
+            : false,
+        entities: [
+          __dirname + "/entities/*.entity{.ts,.js}",
+          __dirname + "/../KSR-CUSTOMER/src/entities/*.entity{.ts,.js}",
+        ],
         autoLoadEntities: true,
       }),
       dataSourceFactory: async (options) => {
