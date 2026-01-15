@@ -7,6 +7,7 @@ import { TerminusModule } from "@nestjs/terminus";
 import { APP_FILTER, APP_GUARD } from "@nestjs/core";
 import { DataSource } from "typeorm";
 import { redisStore } from "cache-manager-redis-yet";
+import { appDataSourceOptions } from "./config/database.config";
 import { AuthModule } from "./auth/auth.module";
 import { RolesModule } from "./roles/roles.module";
 import { ModulesModule } from "./modules/modules.module";
