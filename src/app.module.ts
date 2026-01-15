@@ -98,22 +98,7 @@ import { OauthToken } from "./entities/oauth-token.entity";
     // Database
     TypeOrmModule.forRootAsync({
       useFactory: async () => ({
-        type: "postgres" as const,
-        host: process.env.DB_HOST,
-        port: parseInt(process.env.DB_PORT, 10),
-        username: process.env.DB_USERNAME,
-        password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME,
-        schema: "public",
-        synchronize: false,
-        ssl:
-          process.env.DB_SSL === "true"
-            ? { rejectUnauthorized: false }
-            : false,
-        entities: [
-          __dirname + "/entities/*.entity{.ts,.js}",
-          __dirname + "/../KSR-CUSTOMER/src/entities/*.entity{.ts,.js}",
-        ],
+        ...appDataSourceOptions,
         autoLoadEntities: true,
       }),
       dataSourceFactory: async (options) => {

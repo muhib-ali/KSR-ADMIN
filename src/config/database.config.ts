@@ -18,7 +18,7 @@ export const dataSourceOptions: DataSourceOptions = {
       : false,
   entities: [
     __dirname + "/../entities/*.entity{.ts,.js}",
-    __dirname + "/../../KSR-CUSTOMER/src/entities/*.entity{.ts,.js}"
+    // __dirname + "/../../KSR-CUSTOMER/src/entities/*.entity{.ts,.js}"
   ],
   migrations: ["migrations/*{.ts,.js}"],
 };
@@ -41,8 +41,8 @@ export const appDataSourceOptions: DataSourceOptions = {
       }
       : false,
   entities: [
-    __dirname + "/../entities/*.entity{.ts,.js}",
-    __dirname + "/../../KSR-CUSTOMER/src/entities/*.entity{.ts,.js}"
+    __dirname + "/../entities/*.entity{.ts,.js}"
+    // __dirname + "/../../KSR-CUSTOMER/src/entities/*.entity{.ts,.js}"
   ],
 };
 
