@@ -31,6 +31,9 @@ export class OrdersService {
       .skip(skip)
       .take(limit);
 
+    // Filter regular orders by default (Option A: keep existing admin UI stable)
+    qb.andWhere('(order.order_type = :regularType OR order.order_type IS NULL)', { regularType: 'regular' });
+
     if (status) {
       qb.andWhere('order.status = :status', { status });
     }
