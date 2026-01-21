@@ -186,6 +186,12 @@ async function seed() {
         slug: "reviews",
         description: "Manage customer reviews",
         is_active: true,
+      },
+      {
+        title: "Blogs",
+        slug: "blogs",
+        description: "Manage blog posts",
+        is_active: true,
       }
     ];
 
