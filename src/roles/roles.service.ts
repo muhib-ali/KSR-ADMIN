@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { Repository, Not } from "typeorm";
 import { Role } from "../entities/role.entity";
 import { RolePermission } from "../entities/role-permission.entity";
 import { Permission } from "../entities/permission.entity";
@@ -133,6 +133,9 @@ export class RolesService {
     const skip = (page - 1) * limit;
 
     const [roles, total] = await this.roleRepository.findAndCount({
+      where: {
+        slug: Not('customer') // Exclude customer role
+      },
       order: { created_at: "DESC" },
       skip,
       take: limit,
