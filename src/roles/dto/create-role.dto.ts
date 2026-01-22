@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, MaxLength, MinLength } from "class-validator";
+import { IsNotEmpty, IsString, IsUUID, MaxLength, MinLength, IsOptional } from "class-validator";
 import { Transform } from "class-transformer";
 import { ApiProperty } from "@nestjs/swagger";
 
@@ -15,4 +15,13 @@ export class CreateRoleDto {
   @MaxLength(50)
   @Transform(({ value }) => value?.trim())
   title: string;
+
+  @ApiProperty({
+    description: "Role type ID",
+    example: "123e4567-e89b-12d3-a456-426614174000",
+    required: false,
+  })
+  @IsUUID()
+  @IsOptional()
+  role_type_id?: string;
 }

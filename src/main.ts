@@ -25,7 +25,7 @@ async function bootstrap() {
 
   // Setup Swagger documentation
   const config = new DocumentBuilder()
-    .setTitle("Mentor Health API")
+    .setTitle("Ksr-Admin API")
     .setDescription(
       "NestJS backend with JWT authentication and role management"
     )

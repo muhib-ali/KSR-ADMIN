@@ -9,6 +9,7 @@ import { Role } from "../entities/role.entity";
 import { RolePermission } from "../entities/role-permission.entity";
 import { Permission } from "../entities/permission.entity";
 import { Module } from "../entities/module.entity";
+import { RoleType } from "../entities/role-type.entity";
 import { CreateRoleDto } from "./dto/create-role.dto";
 import { UpdateRoleDto } from "./dto/update-role.dto";
 import { UpdateRolePermissionsDto } from "./dto/role-permissions.dto";
@@ -29,7 +30,9 @@ export class RolesService {
     @InjectRepository(Permission)
     private permissionRepository: Repository<Permission>,
     @InjectRepository(Module)
-    private moduleRepository: Repository<Module>
+    private moduleRepository: Repository<Module>,
+    @InjectRepository(RoleType)
+    private roleTypeRepository: Repository<RoleType>
   ) {}
 
   // Helper function to convert title to camelCase slug
@@ -48,7 +51,7 @@ export class RolesService {
   }
 
   async create(createRoleDto: CreateRoleDto): Promise<ApiResponse<Role>> {
-    const { title } = createRoleDto;
+    const { title, role_type_id } = createRoleDto;
     const slug = this.generateSlug(title);
 
     // Check if slug already exists
@@ -60,9 +63,22 @@ export class RolesService {
       throw new BadRequestException("Role with this title already exists");
     }
 
+    // Get role type - use provided ID or default to "systemUsers"
+    let finalRoleTypeId = role_type_id;
+    if (!finalRoleTypeId) {
+      const defaultRoleType = await this.roleTypeRepository.findOne({
+        where: { name: "systemUsers" },
+      });
+      if (!defaultRoleType) {
+        throw new BadRequestException("Default role type not found. Please ensure role types are seeded.");
+      }
+      finalRoleTypeId = defaultRoleType.id;
+    }
+
     const role = this.roleRepository.create({
       title,
       slug,
+      role_type_id: finalRoleTypeId,
       is_active: true,
     });
 
