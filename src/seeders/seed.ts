@@ -176,9 +176,21 @@ async function seed() {
         is_active: true,
       },
       {
+        title: "Bulk Orders",
+        slug: "bulk-orders",
+        description: "Manage bulk orders",
+        is_active: true,
+      },
+      {
         title: "Reviews",
         slug: "reviews",
         description: "Manage customer reviews",
+        is_active: true,
+      },
+      {
+        title: "Blogs",
+        slug: "blogs",
+        description: "Manage blog posts",
         is_active: true,
       }
     ];

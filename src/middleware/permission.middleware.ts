@@ -82,6 +82,8 @@ export class PermissionMiddleware implements NestMiddleware {
                 permissionSlug === "featured-image" ||
                 permissionSlug === "custom-variant-types")
             ? "update"
+          : moduleSlug === "blogs" && permissionSlug === "upload-image"
+            ? "update"
           : permissionSlug;
 
       // Check permission (with caching)

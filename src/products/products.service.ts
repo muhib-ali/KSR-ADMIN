@@ -824,12 +824,21 @@ export class ProductsService {
       authorizationHeader
     );
 
+    // Find the maximum sort_order for existing images to avoid conflicts
+    const existingMaxSortOrder = await this.productImageRepository
+      .createQueryBuilder("image")
+      .select("MAX(image.sort_order)", "maxSort")
+      .where("image.product_id = :productId", { productId })
+      .getRawOne();
+
+    const maxSort = existingMaxSortOrder?.maxSort || 0;
+
     const imagesToSave = uploaded.map((u, idx) =>
       this.productImageRepository.create({
         product_id: productId,
         url: u.url,
         file_name: u.fileName,
-        sort_order: existingCount + idx + 1,
+        sort_order: maxSort + idx + 1,
       })
     );
 

@@ -59,6 +59,9 @@ export class Order extends BaseAuditColumns {
   @Column({ type: "varchar", default: OrderStatus.PENDING })
   status: OrderStatus;
 
+  @Column({ type: "varchar", length: 20, default: 'regular' })
+  order_type: string;
+
   @Column({ type: "text", nullable: true })
   notes: string;
 

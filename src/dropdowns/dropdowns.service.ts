@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { Repository, Not } from "typeorm";
 import { Role } from "../entities/role.entity";
 import { Module } from "../entities/module.entity";
 import { Category } from "../entities/category.entity";
@@ -38,7 +38,10 @@ export class DropdownsService {
 
   async getAllRoles(): Promise<ApiResponse<any>> {
     const roles = await this.roleRepository.find({
-      where: { is_active: true },
+      where: { 
+        is_active: true,
+        slug: Not('customer') // Exclude customer role
+      },
       select: ["id", "title"],
       order: { title: "ASC" },
     });
