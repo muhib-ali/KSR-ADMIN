@@ -1,4 +1,5 @@
 import { DataSource, DataSourceOptions } from "typeorm";
+import { join } from "path";
 
 export const dataSourceOptions: DataSourceOptions = {
   type: "postgres",
@@ -13,14 +14,14 @@ export const dataSourceOptions: DataSourceOptions = {
   ssl:
     process.env.DB_SSL === "true"
       ? {
-        rejectUnauthorized: false,
-      }
+          rejectUnauthorized: false,
+        }
       : false,
   entities: [
     __dirname + "/../entities/*.entity{.ts,.js}",
     // __dirname + "/../../KSR-CUSTOMER/src/entities/*.entity{.ts,.js}"
   ],
-  migrations: ["migrations/*{.ts,.js}"],
+  migrations: [join(process.cwd(), "migrations/*{.ts,.js}")],
 };
 
 // Separate configuration for app runtime (without migrations)

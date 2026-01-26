@@ -2,10 +2,21 @@ import { NestFactory } from "@nestjs/core";
 import { ValidationPipe, Logger } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
+import { runMigrations } from "./utils/run-migrations";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
   const logger = new Logger("Bootstrap");
+
+  // Run migrations before starting the app
+  try {
+    logger.log("Running database migrations...");
+    await runMigrations();
+  } catch (error) {
+    logger.error("Failed to run migrations. Application will not start.", error);
+    process.exit(1);
+  }
+
+  const app = await NestFactory.create(AppModule);
 
   app.enableCors({
     origin: process.env.FRONTEND_URL || true,
