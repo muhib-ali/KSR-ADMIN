@@ -744,9 +744,16 @@ async function seed() {
     console.log("Seeding completed successfully!");
   } catch (error) {
     console.error("Error during seeding:", error);
+    throw error;
   } finally {
     await AppDataSource.destroy();
   }
 }
 
-seed();
+// Export seed function for use in main.ts
+export { seed };
+
+// Only run directly if called via npm run seed
+if (require.main === module) {
+  seed();
+}

@@ -13,10 +13,12 @@ const logger = new Logger("MigrationRunner");
 
 export async function runMigrations(): Promise<void> {
   const dataSource = new DataSource(dataSourceOptions);
+  let isInitialized = false;
 
   try {
     logger.log("Initializing database connection for migrations...");
     await dataSource.initialize();
+    isInitialized = true;
     logger.log("Database connection established");
 
     logger.log("Running pending migrations...");
@@ -31,12 +33,25 @@ export async function runMigrations(): Promise<void> {
       logger.log("✅ No pending migrations found");
     }
 
-    await dataSource.destroy();
     logger.log("Migration process completed");
   } catch (error) {
     logger.error("❌ Error running migrations:", error);
-    await dataSource.destroy();
+    if (error instanceof Error) {
+      logger.error(`Error message: ${error.message}`);
+      if (error.stack) {
+        logger.error(`Stack trace: ${error.stack}`);
+      }
+    }
     throw error;
+  } finally {
+    if (isInitialized) {
+      try {
+        await dataSource.destroy();
+        logger.log("Database connection closed");
+      } catch (destroyError) {
+        logger.warn("Error closing database connection:", destroyError);
+      }
+    }
   }
 }
 

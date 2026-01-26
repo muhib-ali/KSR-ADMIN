@@ -3,6 +3,7 @@ import { ValidationPipe, Logger } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
 import { runMigrations } from "./utils/run-migrations";
+import { runSeeds } from "./utils/run-seeds";
 
 async function bootstrap() {
   const logger = new Logger("Bootstrap");
@@ -14,6 +15,20 @@ async function bootstrap() {
   } catch (error) {
     logger.error("Failed to run migrations. Application will not start.", error);
     process.exit(1);
+  }
+
+  // Run seeds after migrations (only in production or when RUN_SEEDS=true)
+  const shouldRunSeeds = process.env.RUN_SEEDS === "true" || process.env.NODE_ENV === "production";
+  if (shouldRunSeeds) {
+    try {
+      logger.log("Running database seeds...");
+      await runSeeds();
+    } catch (error) {
+      logger.error("Failed to run seeds. Application will not start.", error);
+      process.exit(1);
+    }
+  } else {
+    logger.log("Skipping database seeds (set RUN_SEEDS=true to enable)");
   }
 
   const app = await NestFactory.create(AppModule);
