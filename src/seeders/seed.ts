@@ -192,6 +192,12 @@ async function seed() {
         slug: "blogs",
         description: "Manage blog posts",
         is_active: true,
+      },
+      {
+        title: "Dashboard",
+        slug: "dashboard",
+        description: "Dashboard analytics",
+        is_active: true,
       }
     ];
 

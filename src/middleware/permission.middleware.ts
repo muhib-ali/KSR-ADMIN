@@ -41,8 +41,11 @@ export class PermissionMiddleware implements NestMiddleware {
       const url = new URL(fullPath, `http://${req.get("host")}`);
       const pathname = url.pathname;
 
+      console.log(`[PermissionMiddleware] Processing: ${req.method} ${pathname}`);
+
       // Skip excluded routes (auth, health, API docs)
       if (this.isExcludedRoute(pathname)) {
+        console.log(`[PermissionMiddleware] Excluded route: ${pathname}`);
         return next();
       }
 
@@ -116,7 +119,10 @@ export class PermissionMiddleware implements NestMiddleware {
   }
 
   private isExcludedRoute(pathname: string): boolean {
-    const excludedPaths = ["/", "/auth", "/health", "/api"];
+    const excludedPaths = ["/auth", "/health", "/currency"];
+    // Exact match for root path
+    if (pathname === "/") return true;
+    
     return excludedPaths.some((path) => pathname.startsWith(path));
   }
 
@@ -194,6 +200,12 @@ export class PermissionMiddleware implements NestMiddleware {
 
     const moduleSlug = pathParts[0]; // e.g., "roles", "modules", "users"
     let permissionSlug = pathParts[1]; // e.g., "create", "update", "getById"
+
+    // Alias dashboard overview endpoint to the list permission
+    // /dashboard/getOverview should be protected by dashboard/getAll
+    if (moduleSlug === "dashboard" && permissionSlug === "getOverview") {
+      permissionSlug = "getAll";
+    }
 
     // Handle dynamic routes where the 2nd segment is an ID (UUID), and the real action is the 3rd segment.
     // Example: /products/:productId/custom-variant-types
