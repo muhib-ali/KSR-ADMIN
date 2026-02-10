@@ -162,21 +162,22 @@ export class DashboardService {
 
     const days = this.enumerateDaysUTC(currentStart, currentEnd);
 
+    const dateExpr = 'DATE(order.created_at)';
     const [revenueOverviewRaw, statusTrendsRaw] = await Promise.all([
       this.orderRepository
         .createQueryBuilder('order')
-        .select('DATE(order.created_at)', 'day')
+        .select(dateExpr, 'day')
         .addSelect('COALESCE(SUM(order.total_amount), 0)', 'revenue')
         .addSelect('COUNT(order.id)', 'orders')
         .where(baseOrderWhere, { regularType: 'regular' })
         .andWhere('order.status = :status', { status: OrderStatus.ACCEPTED })
         .andWhere('order.created_at BETWEEN :from AND :to', { from: currentStart, to: currentEnd })
-        .groupBy('day')
-        .orderBy('day', 'ASC')
+        .groupBy(dateExpr)
+        .orderBy(dateExpr, 'ASC')
         .getRawMany(),
       this.orderRepository
         .createQueryBuilder('order')
-        .select('DATE(order.created_at)', 'day')
+        .select(dateExpr, 'day')
         .addSelect('order.status', 'status')
         .addSelect('COUNT(order.id)', 'count')
         .where(baseOrderWhere, { regularType: 'regular' })
@@ -184,9 +185,9 @@ export class DashboardService {
         .andWhere('order.status IN (:...statuses)', {
           statuses: [OrderStatus.PENDING, OrderStatus.ACCEPTED, OrderStatus.REJECTED],
         })
-        .groupBy('day')
+        .groupBy(dateExpr)
         .addGroupBy('order.status')
-        .orderBy('day', 'ASC')
+        .orderBy(dateExpr, 'ASC')
         .getRawMany(),
     ]);
 

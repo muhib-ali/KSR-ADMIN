@@ -253,7 +253,8 @@ export class ProductsController {
         data: {
           totalRows: 50,
           processedRows: 50,
-          createdCount: 45,
+          createdCount: 40,
+          updatedCount: 5,
           failedCount: 5,
           failures: [
             {
