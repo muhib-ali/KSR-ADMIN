@@ -29,6 +29,8 @@ import {
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
 import { XMLParser } from "fast-xml-parser";
+import { ChatbotTrainingClientService } from "../chatbot-training/chatbot-training-client.service";
+import { ChatbotProductPayload } from "../chatbot-training/chatbot-training.payload";
 
 @Injectable()
 export class ProductsService {
@@ -56,7 +58,8 @@ export class ProductsService {
     @InjectRepository(Supplier)
     private supplierRepository: Repository<Supplier>,
     @InjectRepository(Warehouse)
-    private warehouseRepository: Repository<Warehouse>
+    private warehouseRepository: Repository<Warehouse>,
+    private chatbotTrainingClient: ChatbotTrainingClientService
   ) {}
 
   private readonly filesBackendBaseUrl =
@@ -155,6 +158,25 @@ export class ProductsService {
         clearTimeout(timeoutId);
       }
     }
+  }
+
+  /**
+   * Find a product by title (case-insensitive, trimmed).
+   * If excludeId is set, excludes that product (for update flow).
+   */
+  private async findProductByTitle(
+    title: string,
+    excludeId?: string
+  ): Promise<Product | null> {
+    const qb = this.productRepository
+      .createQueryBuilder("p")
+      .where("LOWER(TRIM(p.title)) = LOWER(TRIM(:title))", {
+        title: (title || "").trim(),
+      });
+    if (excludeId) {
+      qb.andWhere("p.id != :excludeId", { excludeId });
+    }
+    return qb.getOne();
   }
 
   private getImageMimeTypeFromPath(path: string): string {
@@ -1142,8 +1164,11 @@ export class ProductsService {
           totalRows: 0,
           processedRows: 0,
           createdCount: 0,
+          updatedCount: 0,
           failedCount: 0,
           failures: [],
+          createdSkus: [],
+          updatedSkus: [],
         },
         "Bulk upload processed",
         "Product",
@@ -1467,7 +1492,87 @@ export class ProductsService {
     const chunks = this.chunkArray(validRows, chunkSize);
 
     let createdCount = 0;
+    let updatedCount = 0;
     const createdSkus: string[] = [];
+    const updatedSkus: string[] = [];
+
+    const saveVariantsCvgBulkImagesForRow = async (
+      productId: string,
+      r: typeof validRows[0]
+    ) => {
+      const variantsToCreate: Array<{ vtype_id: string; value: string }> = [];
+      if (r.size && sizeVariantType) {
+        variantsToCreate.push({ vtype_id: sizeVariantType.id, value: r.size });
+      }
+      if (r.model && modelVariantType) {
+        variantsToCreate.push({ vtype_id: modelVariantType.id, value: r.model });
+      }
+      if (r.year && yearVariantType) {
+        variantsToCreate.push({ vtype_id: yearVariantType.id, value: r.year });
+      }
+      if (r.customVariant && r.variantName) {
+        let customVariantType = await this.variantTypeRepository
+          .createQueryBuilder("vt")
+          .where("LOWER(vt.name) = LOWER(:name)", { name: r.customVariant })
+          .getOne();
+        if (!customVariantType) {
+          customVariantType = await this.variantTypeRepository.save({
+            name: r.customVariant,
+          } as any);
+        }
+        if (customVariantType) {
+          variantsToCreate.push({
+            vtype_id: customVariantType.id,
+            value: r.variantName,
+          });
+        }
+      }
+      if (variantsToCreate.length > 0) {
+        const variantEntities = variantsToCreate.map((v) =>
+          this.variantRepository.create({
+            vtype_id: v.vtype_id,
+            value: v.value,
+            product_id: productId,
+          })
+        );
+        await this.variantRepository.save(variantEntities);
+      }
+      const cvgIds: string[] = [];
+      if (this.parseBooleanCell(r.retail) && retailCvg) cvgIds.push(retailCvg.id);
+      if (this.parseBooleanCell(r.wholesale) && wholesaleCvg) cvgIds.push(wholesaleCvg.id);
+      if (cvgIds.length > 0) {
+        const cvgProductEntities = cvgIds.map((cvg_id) =>
+          this.cvgProductRepository.create({ cvg_id, product_id: productId })
+        );
+        await this.cvgProductRepository.save(cvgProductEntities);
+      }
+      if (
+        r.bpQuantity &&
+        r.bpPricePerProduct &&
+        Number.isFinite(r.bpQuantity) &&
+        Number.isFinite(r.bpPricePerProduct)
+      ) {
+        await this.bulkPriceRepository.save(
+          this.bulkPriceRepository.create({
+            quantity: r.bpQuantity,
+            price_per_product: r.bpPricePerProduct,
+            product_id: productId,
+          })
+        );
+      }
+      if (r.imageUrls && r.imageUrls.length > 1) {
+        const additionalImages = r.imageUrls.slice(1, 10);
+        const imgs = additionalImages.map((url, idx) =>
+          this.productImageRepository.create({
+            product_id: productId,
+            url,
+            file_name: this.extractProductsFileNameFromUrl(url) || url,
+            sort_order: idx + 2,
+          })
+        );
+        await this.productImageRepository.save(imgs);
+      }
+    };
 
     for (const chunk of chunks) {
       for (const row of chunk) {
@@ -1490,206 +1595,258 @@ export class ProductsService {
             continue;
           }
 
-          const brandSeg = this.sanitizeSkuSegment(b.name);
-          const catSeg = this.sanitizeSkuSegment(c.name);
-          if (!brandSeg || !catSeg) {
-            failures.push({
-              rowNumber: row.rowNumber,
-              reason: "Invalid brand/category for SKU generation",
-            });
-            continue;
-          }
-
-          const skuPrefix = `${brandSeg}-${catSeg}`;
-          const next = nextSeqMap.get(skuPrefix) || 1;
-          nextSeqMap.set(skuPrefix, next + 1);
-          const sku = `${skuPrefix}-${String(next).padStart(4, "0")}`;
-
           const parsedStartDate = this.parseExcelDateCell(row.startDate);
           const parsedEndDate = this.parseExcelDateCell(row.endDate);
 
-          // Lookup tax by name (not auto-create)
-          let taxId: string | undefined = undefined;
+          let taxId: string | undefined;
           if (row.tax) {
             const taxEntity = await this.taxRepository
               .createQueryBuilder("t")
               .where("LOWER(t.title) = LOWER(:title)", { title: row.tax })
               .getOne();
-            if (taxEntity) {
-              taxId = taxEntity.id;
-            }
+            taxId = taxEntity?.id;
           }
-
-          // Lookup supplier by name (not auto-create)
-          let supplierId: string | undefined = undefined;
+          let supplierId: string | undefined;
           if (row.supplier) {
             const supplierEntity = await this.supplierRepository
               .createQueryBuilder("s")
               .where("LOWER(s.supplier_name) = LOWER(:name)", { name: row.supplier })
               .getOne();
-            if (supplierEntity) {
-              supplierId = supplierEntity.id;
-            }
+            supplierId = supplierEntity?.id;
           }
-
-          // Lookup warehouse by name (not auto-create)
-          let warehouseId: string | undefined = undefined;
+          let warehouseId: string | undefined;
           if (row.warehouse) {
             const warehouseEntity = await this.warehouseRepository
               .createQueryBuilder("w")
               .where("LOWER(w.name) = LOWER(:name)", { name: row.warehouse })
               .getOne();
-            if (warehouseEntity) {
-              warehouseId = warehouseEntity.id;
+            warehouseId = warehouseEntity?.id;
+          }
+
+          // Strict: find existing product by name (case-insensitive). If exists → update only, never create duplicate.
+          const existingProduct = await this.findProductByTitle(row.name);
+
+          if (existingProduct) {
+            const updateData: any = {
+              title: row.name,
+              description: row.description || null,
+              price: row.sellingPrice,
+              cost: row.cost || null,
+              freight: row.freight || null,
+              stock_quantity: row.stock,
+              category_id: c.id,
+              brand_id: b.id,
+              currency: row.currency,
+              product_img_url: row.imageUrls?.[0] || null,
+              product_video_url: row.video || null,
+              discount: row.discount || 0,
+              start_discount_date: parsedStartDate,
+              end_discount_date: parsedEndDate,
+              weight: row.weight || null,
+              length: row.length || null,
+              width: row.width || null,
+              height: row.height || null,
+              tax_id: taxId || null,
+              supplier_id: supplierId || null,
+              warehouse_id: warehouseId || null,
+              total_price: row.sellingPrice,
+            };
+            await this.productRepository.update(existingProduct.id, updateData);
+            await this.variantRepository.delete({ product_id: existingProduct.id });
+            await this.cvgProductRepository.delete({ product_id: existingProduct.id });
+            await this.bulkPriceRepository.delete({ product_id: existingProduct.id });
+            await this.productImageRepository.delete({ product_id: existingProduct.id });
+            await saveVariantsCvgBulkImagesForRow(String(existingProduct.id), row);
+            updatedCount += 1;
+            updatedSkus.push((existingProduct as any).sku ?? existingProduct.id);
+            try {
+              const bulkVariants: { type_name: string; value: string }[] = [];
+              if (row.size) bulkVariants.push({ type_name: "size", value: row.size });
+              if (row.model) bulkVariants.push({ type_name: "model", value: row.model });
+              if (row.year) bulkVariants.push({ type_name: "year", value: row.year });
+              const customVariant =
+                row.customVariant && row.variantName
+                  ? [{ type_name: row.customVariant, value: row.variantName }]
+                  : undefined;
+              const bulkPayload: ChatbotProductPayload = {
+                id: existingProduct.id,
+                title: row.name,
+                description: row.description ?? null,
+                price: row.sellingPrice,
+                currency: row.currency,
+                sku: (existingProduct as any).sku ?? existingProduct.id,
+                category_name: c.name,
+                brand_name: b.name,
+                selling_price: row.sellingPrice,
+                cost: row.cost ?? undefined,
+                freight: row.freight ?? undefined,
+                tax_title: row.tax || undefined,
+                discount: row.discount,
+                start_discount_date: parsedStartDate
+                  ? new Date(parsedStartDate).toISOString()
+                  : undefined,
+                end_discount_date: parsedEndDate
+                  ? new Date(parsedEndDate).toISOString()
+                  : undefined,
+                bulk_pricing:
+                  row.bpQuantity != null &&
+                  row.bpPricePerProduct != null &&
+                  Number.isFinite(row.bpQuantity) &&
+                  Number.isFinite(row.bpPricePerProduct)
+                    ? [
+                        {
+                          quantity: row.bpQuantity,
+                          price_per_product: row.bpPricePerProduct,
+                        },
+                      ]
+                    : undefined,
+                total_cost: (row.cost ?? 0) + (row.freight ?? 0),
+                price_after_discount:
+                  row.sellingPrice *
+                  (1 - (row.discount || 0) / 100),
+                supplier_name: row.supplier || undefined,
+                warehouse_name: row.warehouse || undefined,
+                variants: bulkVariants.length ? bulkVariants : undefined,
+                custom_variants: customVariant,
+                weight: row.weight ?? undefined,
+                length: row.length ?? undefined,
+                width: row.width ?? undefined,
+                height: row.height ?? undefined,
+                product_img_url: row.imageUrls?.[0] ?? undefined,
+                product_video_url: row.video ?? undefined,
+              };
+              await this.chatbotTrainingClient.upsertProduct(bulkPayload);
+            } catch {
+              // Best-effort sync only
             }
-          }
-
-          // Create product
-          const productData: any = {
-            title: row.name,
-            description: row.description || null,
-            price: row.sellingPrice,
-            cost: row.cost || null,
-            freight: row.freight || null,
-            stock_quantity: row.stock,
-            category_id: c.id,
-            brand_id: b.id,
-            currency: row.currency,
-            sku,
-            product_img_url: row.imageUrls?.[0] || null,
-            product_video_url: row.video || null,
-            discount: row.discount || 0,
-            start_discount_date: parsedStartDate,
-            end_discount_date: parsedEndDate,
-            weight: row.weight || null,
-            length: row.length || null,
-            width: row.width || null,
-            height: row.height || null,
-            tax_id: taxId || null,
-            supplier_id: supplierId || null,
-            warehouse_id: warehouseId || null,
-            total_price: row.sellingPrice,
-          };
-
-          const res = await this.productRepository
-            .createQueryBuilder()
-            .insert()
-            .into(Product)
-            .values(productData)
-            .returning(["id"])
-            .execute();
-
-          const insertedId =
-            (res as any)?.identifiers?.[0]?.id || (res as any)?.generatedMaps?.[0]?.id;
-
-          if (!insertedId) {
-            failures.push({
-              rowNumber: row.rowNumber,
-              reason: "Failed to insert product",
-            });
-            continue;
-          }
-
-          createdCount += 1;
-          createdSkus.push(sku);
-
-          // Handle variants (default: size, model, year)
-          const variantsToCreate: Array<{ vtype_id: string; value: string }> = [];
-
-          if (row.size && sizeVariantType) {
-            variantsToCreate.push({ vtype_id: sizeVariantType.id, value: row.size });
-          }
-          if (row.model && modelVariantType) {
-            variantsToCreate.push({ vtype_id: modelVariantType.id, value: row.model });
-          }
-          if (row.year && yearVariantType) {
-            variantsToCreate.push({ vtype_id: yearVariantType.id, value: row.year });
-          }
-
-          // Handle custom variant
-          if (row.customVariant && row.variantName) {
-            // Find or create custom variant type
-            let customVariantType = await this.variantTypeRepository
-              .createQueryBuilder("vt")
-              .where("LOWER(vt.name) = LOWER(:name)", { name: row.customVariant })
-              .getOne();
-
-            if (!customVariantType) {
-              customVariantType = await this.variantTypeRepository.save({
-                name: row.customVariant,
-              } as any);
-            }
-
-            if (customVariantType) {
-              variantsToCreate.push({
-                vtype_id: customVariantType.id,
-                value: row.variantName,
+          } else {
+            const brandSeg = this.sanitizeSkuSegment(b.name);
+            const catSeg = this.sanitizeSkuSegment(c.name);
+            if (!brandSeg || !catSeg) {
+              failures.push({
+                rowNumber: row.rowNumber,
+                reason: "Invalid brand/category for SKU generation",
               });
+              continue;
             }
-          }
+            const skuPrefix = `${brandSeg}-${catSeg}`;
+            const next = nextSeqMap.get(skuPrefix) || 1;
+            nextSeqMap.set(skuPrefix, next + 1);
+            const sku = `${skuPrefix}-${String(next).padStart(4, "0")}`;
 
-          if (variantsToCreate.length > 0) {
-            const variantEntities = variantsToCreate.map((v) =>
-              this.variantRepository.create({
-                vtype_id: v.vtype_id,
-                value: v.value,
-                product_id: String(insertedId),
-              })
-            );
-            await this.variantRepository.save(variantEntities);
-          }
+            const productData: any = {
+              title: row.name,
+              description: row.description || null,
+              price: row.sellingPrice,
+              cost: row.cost || null,
+              freight: row.freight || null,
+              stock_quantity: row.stock,
+              category_id: c.id,
+              brand_id: b.id,
+              currency: row.currency,
+              sku,
+              product_img_url: row.imageUrls?.[0] || null,
+              product_video_url: row.video || null,
+              discount: row.discount || 0,
+              start_discount_date: parsedStartDate,
+              end_discount_date: parsedEndDate,
+              weight: row.weight || null,
+              length: row.length || null,
+              width: row.width || null,
+              height: row.height || null,
+              tax_id: taxId || null,
+              supplier_id: supplierId || null,
+              warehouse_id: warehouseId || null,
+              total_price: row.sellingPrice,
+            };
 
-          // Handle customer visibility groups (retail/wholesale)
-          const cvgIds: string[] = [];
-          if (this.parseBooleanCell(row.retail) && retailCvg) {
-            cvgIds.push(retailCvg.id);
-          }
-          if (this.parseBooleanCell(row.wholesale) && wholesaleCvg) {
-            cvgIds.push(wholesaleCvg.id);
-          }
+            const res = await this.productRepository
+              .createQueryBuilder()
+              .insert()
+              .into(Product)
+              .values(productData)
+              .returning(["id"])
+              .execute();
 
-          if (cvgIds.length > 0) {
-            const cvgProductEntities = cvgIds.map((cvg_id) =>
-              this.cvgProductRepository.create({
-                cvg_id,
-                product_id: String(insertedId),
-              })
-            );
-            await this.cvgProductRepository.save(cvgProductEntities);
-          }
+            const insertedId =
+              (res as any)?.identifiers?.[0]?.id || (res as any)?.generatedMaps?.[0]?.id;
 
-          // Handle bulk prices (only if both quantity and price are provided)
-          if (
-            row.bpQuantity &&
-            row.bpPricePerProduct &&
-            Number.isFinite(row.bpQuantity) &&
-            Number.isFinite(row.bpPricePerProduct)
-          ) {
-            const bulkPriceEntity = this.bulkPriceRepository.create({
-              quantity: row.bpQuantity,
-              price_per_product: row.bpPricePerProduct,
-              product_id: String(insertedId),
-            });
-            await this.bulkPriceRepository.save(bulkPriceEntity);
-          }
+            if (!insertedId) {
+              failures.push({
+                rowNumber: row.rowNumber,
+                reason: "Failed to insert product",
+              });
+              continue;
+            }
 
-          // Handle additional images (image2-image5) in product_images table
-          if (row.imageUrls && row.imageUrls.length > 1) {
-            const additionalImages = row.imageUrls.slice(1, 10); // Skip image1 (already in product_img_url)
-            const imgs = additionalImages.map((url, idx) =>
-              this.productImageRepository.create({
-                product_id: String(insertedId),
-                url: url,
-                file_name: this.extractProductsFileNameFromUrl(url) || url,
-                sort_order: idx + 2, // Start from 2 since image1 is the featured image
-              })
-            );
-            await this.productImageRepository.save(imgs);
+            createdCount += 1;
+            createdSkus.push(sku);
+            await saveVariantsCvgBulkImagesForRow(String(insertedId), row);
+            try {
+              const bulkVariants: { type_name: string; value: string }[] = [];
+              if (row.size) bulkVariants.push({ type_name: "size", value: row.size });
+              if (row.model) bulkVariants.push({ type_name: "model", value: row.model });
+              if (row.year) bulkVariants.push({ type_name: "year", value: row.year });
+              const customVariant =
+                row.customVariant && row.variantName
+                  ? [{ type_name: row.customVariant, value: row.variantName }]
+                  : undefined;
+              const bulkPayload: ChatbotProductPayload = {
+                id: String(insertedId),
+                title: row.name,
+                description: row.description ?? null,
+                price: row.sellingPrice,
+                currency: row.currency,
+                sku,
+                category_name: c.name,
+                brand_name: b.name,
+                selling_price: row.sellingPrice,
+                cost: row.cost ?? undefined,
+                freight: row.freight ?? undefined,
+                tax_title: row.tax || undefined,
+                discount: row.discount,
+                start_discount_date: parsedStartDate
+                  ? new Date(parsedStartDate).toISOString()
+                  : undefined,
+                end_discount_date: parsedEndDate
+                  ? new Date(parsedEndDate).toISOString()
+                  : undefined,
+                bulk_pricing:
+                  row.bpQuantity != null &&
+                  row.bpPricePerProduct != null &&
+                  Number.isFinite(row.bpQuantity) &&
+                  Number.isFinite(row.bpPricePerProduct)
+                    ? [
+                        {
+                          quantity: row.bpQuantity,
+                          price_per_product: row.bpPricePerProduct,
+                        },
+                      ]
+                    : undefined,
+                total_cost: (row.cost ?? 0) + (row.freight ?? 0),
+                price_after_discount:
+                  row.sellingPrice *
+                  (1 - (row.discount || 0) / 100),
+                supplier_name: row.supplier || undefined,
+                warehouse_name: row.warehouse || undefined,
+                variants: bulkVariants.length ? bulkVariants : undefined,
+                custom_variants: customVariant,
+                weight: row.weight ?? undefined,
+                length: row.length ?? undefined,
+                width: row.width ?? undefined,
+                height: row.height ?? undefined,
+                product_img_url: row.imageUrls?.[0] ?? undefined,
+                product_video_url: row.video ?? undefined,
+              };
+              await this.chatbotTrainingClient.upsertProduct(bulkPayload);
+            } catch {
+              // Best-effort sync only
+            }
           }
         } catch (e: any) {
           failures.push({
             rowNumber: row.rowNumber,
-            reason: e?.message || "Failed to create product",
+            reason: e?.message || "Failed to create or update product",
           });
         }
       }
@@ -1703,9 +1860,11 @@ export class ProductsService {
         totalRows,
         processedRows,
         createdCount,
+        updatedCount,
         failedCount: failures.length,
         failures,
         createdSkus,
+        updatedSkus,
       },
       "Bulk upload processed",
       "Product",
@@ -1766,6 +1925,13 @@ export class ProductsService {
 
     if (!brand) {
       throw new BadRequestException("Brand not found");
+    }
+
+    const existingByName = await this.findProductByTitle(title);
+    if (existingByName) {
+      throw new BadRequestException(
+        "A product with this name already exists. Product name must be unique."
+      );
     }
 
     const sku = await this.generateSku(brand.name, category.name);
@@ -1857,8 +2023,26 @@ export class ProductsService {
 
     const productWithRelations = await this.productRepository.findOne({
       where: { id: savedProduct.id },
-      relations: ["category", "brand", "cvgProducts", "cvgProducts.customerVisibilityGroup", "bulkPrices"],
+      relations: [
+        "category",
+        "brand",
+        "supplier",
+        "warehouse",
+        "tax",
+        "variants",
+        "variants.variantType",
+        "cvgProducts",
+        "cvgProducts.customerVisibilityGroup",
+        "bulkPrices",
+      ],
     });
+
+    try {
+      const payload = this.chatbotTrainingClient.toPayload(productWithRelations!);
+      await this.chatbotTrainingClient.upsertProduct(payload);
+    } catch {
+      // Best-effort sync only; response unchanged
+    }
 
     return ResponseHelper.success(
       productWithRelations!,
@@ -1927,6 +2111,13 @@ export class ProductsService {
 
     if (!brand) {
       throw new BadRequestException("Brand not found");
+    }
+
+    const existingByName = await this.findProductByTitle(title, id);
+    if (existingByName) {
+      throw new BadRequestException(
+        "A product with this name already exists. Product name must be unique."
+      );
     }
 
     const updateData: any = {
@@ -2096,8 +2287,26 @@ export class ProductsService {
 
     const updatedProduct = await this.productRepository.findOne({
       where: { id },
-      relations: ["category", "brand", "variants", "variants.variantType", "cvgProducts", "cvgProducts.customerVisibilityGroup", "bulkPrices"],
+      relations: [
+        "category",
+        "brand",
+        "supplier",
+        "warehouse",
+        "tax",
+        "variants",
+        "variants.variantType",
+        "cvgProducts",
+        "cvgProducts.customerVisibilityGroup",
+        "bulkPrices",
+      ],
     });
+
+    try {
+      const payload = this.chatbotTrainingClient.toPayload(updatedProduct!);
+      await this.chatbotTrainingClient.upsertProduct(payload);
+    } catch {
+      // Best-effort sync only; response unchanged
+    }
 
     return ResponseHelper.success(
       updatedProduct!,
@@ -2212,7 +2421,14 @@ export class ProductsService {
       ? this.extractProductsFileNameFromUrl(videoUrl)
       : null;
 
+    const productIdForChatbot = product.id;
     await this.productRepository.remove(product);
+
+    try {
+      await this.chatbotTrainingClient.deleteProduct(productIdForChatbot);
+    } catch {
+      // Best-effort sync only; response unchanged
+    }
 
     // Delete image files
     for (const fn of imageFileNames) {

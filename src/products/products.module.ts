@@ -14,9 +14,13 @@ import { CustomerVisibilityGroup } from "../entities/customer-visibility-group.e
 import { Tax } from "../entities/tax.entity";
 import { Supplier } from "../entities/supplier.entity";
 import { Warehouse } from "../entities/warehouse.entity";
+import { ChatbotTrainingModule } from "../chatbot-training/chatbot-training.module";
 
 @NestModule({
-  imports: [TypeOrmModule.forFeature([Product, ProductImage, Category, Brand, Variant, VariantType, CvgProduct, BulkPrice, CustomerVisibilityGroup, Tax, Supplier, Warehouse])],
+  imports: [
+    TypeOrmModule.forFeature([Product, ProductImage, Category, Brand, Variant, VariantType, CvgProduct, BulkPrice, CustomerVisibilityGroup, Tax, Supplier, Warehouse]),
+    ChatbotTrainingModule,
+  ],
   controllers: [ProductsController],
   providers: [ProductsService],
   exports: [ProductsService],
