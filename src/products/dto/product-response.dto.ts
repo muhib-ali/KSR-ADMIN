@@ -208,7 +208,7 @@ export class ProductDto {
 
   @ApiProperty({
     description: "Currency code",
-    example: "USD",
+    example: "NOK",
   })
   currency: string;
 

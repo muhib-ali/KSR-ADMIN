@@ -95,7 +95,7 @@ export class CreateProductDto {
 
   @ApiProperty({
     description: "Currency code",
-    example: "USD",
+    example: "NOK",
   })
   @IsString()
   @IsNotEmpty()

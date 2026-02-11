@@ -1121,7 +1121,7 @@ export class ProductsService {
       "selling price",
       "cost",
       "freight",
-      "currency(USD)",
+      "currency(NOK)",
       "Discount",
       "start date",
       "end date",
