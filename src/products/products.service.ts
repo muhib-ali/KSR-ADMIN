@@ -64,6 +64,26 @@ export class ProductsService {
 
   private readonly filesBackendBaseUrl =
     process.env.FILES_BACKEND_URL || "http://localhost:3003";
+  /** Default warehouse name when product has no warehouse specified (manual create or Excel). */
+  private readonly defaultWarehouseName = "FOERDE";
+
+  /**
+   * Returns the ID of the warehouse named "FOERDE". If it does not exist, creates it and returns its ID.
+   */
+  private async getOrCreateDefaultWarehouse(): Promise<string> {
+    const existing = await this.warehouseRepository
+      .createQueryBuilder("w")
+      .where("LOWER(w.name) = LOWER(:name)", { name: this.defaultWarehouseName })
+      .getOne();
+    if (existing) return existing.id;
+    const warehouse = this.warehouseRepository.create({
+      name: this.defaultWarehouseName,
+      code: this.defaultWarehouseName,
+      address: null,
+    });
+    const saved = await this.warehouseRepository.save(warehouse);
+    return saved.id;
+  }
 
   private extractProductsFileNameFromUrl(url: string): string | null {
     try {
@@ -1622,6 +1642,9 @@ export class ProductsService {
               .getOne();
             warehouseId = warehouseEntity?.id;
           }
+          if (!warehouseId) {
+            warehouseId = await this.getOrCreateDefaultWarehouse();
+          }
 
           // Strict: find existing product by name (case-insensitive). If exists → update only, never create duplicate.
           const existingProduct = await this.findProductByTitle(row.name);
@@ -1927,6 +1950,12 @@ export class ProductsService {
       throw new BadRequestException("Brand not found");
     }
 
+    // Default warehouse: if not provided, use "FOERDE" (find or create)
+    let resolvedWarehouseId = warehouse_id ?? null;
+    if (!resolvedWarehouseId) {
+      resolvedWarehouseId = await this.getOrCreateDefaultWarehouse();
+    }
+
     const existingByName = await this.findProductByTitle(title);
     if (existingByName) {
       throw new BadRequestException(
@@ -1958,7 +1987,7 @@ export class ProductsService {
       weight,
       tax_id,
       supplier_id,
-      warehouse_id,
+      warehouse_id: resolvedWarehouseId,
       total_price,
       ...(typeof is_active === "boolean" ? { is_active } : {}),
     });
