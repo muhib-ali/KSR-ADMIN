@@ -17,6 +17,7 @@ import { CustomerVisibilityGroup } from "../entities/customer-visibility-group.e
 import { Tax } from "../entities/tax.entity";
 import { Supplier } from "../entities/supplier.entity";
 import { Warehouse } from "../entities/warehouse.entity";
+import { Subcategory } from "../entities/subcategory.entity";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { DeleteProductDto } from "./dto/delete-product.dto";
@@ -59,6 +60,8 @@ export class ProductsService {
     private supplierRepository: Repository<Supplier>,
     @InjectRepository(Warehouse)
     private warehouseRepository: Repository<Warehouse>,
+    @InjectRepository(Subcategory)
+    private subcategoryRepository: Repository<Subcategory>,
     private chatbotTrainingClient: ChatbotTrainingClientService
   ) {}
 
@@ -1033,6 +1036,24 @@ export class ProductsService {
     return Number.isFinite(d.getTime()) ? d : null;
   }
 
+  /**
+   * Parses the "custom variant" Excel column: key1=value1,key2=value2,...
+   * Returns array of { type_name: key, value } for each pair.
+   */
+  private parseCustomVariantsColumn(cell: string | undefined): Array<{ type_name: string; value: string }> {
+    if (!cell || typeof cell !== "string") return [];
+    const result: Array<{ type_name: string; value: string }> = [];
+    const pairs = cell.split(",").map((s) => s.trim()).filter(Boolean);
+    for (const pair of pairs) {
+      const eq = pair.indexOf("=");
+      if (eq === -1) continue;
+      const key = pair.slice(0, eq).trim();
+      const value = pair.slice(eq + 1).trim();
+      if (key && value) result.push({ type_name: key, value });
+    }
+    return result;
+  }
+
   private normalizeNameKey(value: string): string {
     return this.normalizeName(value).toLowerCase();
   }
@@ -1099,11 +1120,84 @@ export class ProductsService {
     }
   }
 
+  /** Find subcategory by name under category; if not found, create and return. */
+  private async ensureSubcategoryByNameAndCategory(
+    categoryId: string,
+    subcategoryName: string
+  ): Promise<Subcategory> {
+    const trimmed = this.normalizeName(subcategoryName);
+    const existing = await this.subcategoryRepository
+      .createQueryBuilder("s")
+      .where("LOWER(s.name) = LOWER(:name)", { name: trimmed })
+      .andWhere("s.cat_id = :catId", { catId: categoryId })
+      .getOne();
+    if (existing) return existing;
+
+    try {
+      return await this.subcategoryRepository.save({
+        name: trimmed,
+        description: null as any,
+        cat_id: categoryId,
+      } as any);
+    } catch {
+      const again = await this.subcategoryRepository
+        .createQueryBuilder("s")
+        .where("LOWER(s.name) = LOWER(:name)", { name: trimmed })
+        .andWhere("s.cat_id = :catId", { catId: categoryId })
+        .getOne();
+      if (again) return again;
+      throw new BadRequestException(
+        `Failed to create subcategory: ${trimmed} under category ${categoryId}`
+      );
+    }
+  }
+
   async bulkUploadFromExcel(
     file: { buffer: Buffer; originalname: string; mimetype: string },
     authorizationHeader?: string
   ): Promise<ApiResponse<any>> {
-    const expectedHeaders = [
+    const expectedHeadersNew = [
+      "name",
+      "description",
+      "category",
+      "brand",
+      "supplier",
+      "warehouse",
+      "tax",
+      "size",
+      "model",
+      "year",
+      "custom variant",
+      "retail",
+      "wholesale",
+      "selling price",
+      "cost",
+      "freight",
+      "currency(NOK)",
+      "Discount",
+      "start date",
+      "end date",
+      "bp quantity",
+      "bp price per product",
+      "stock",
+      "weight",
+      "length",
+      "width",
+      "height",
+      "video",
+      "image1",
+      "image2",
+      "image3",
+      "image4",
+      "image5",
+      "image6",
+      "image7",
+      "image8",
+      "image9",
+      "image10",
+    ];
+
+    const expectedHeadersOld = [
       "name",
       "description",
       "category",
@@ -1176,17 +1270,59 @@ export class ProductsService {
       );
     }
 
-    const headerRow = (rows[0] || []).map((h) => String(h || "").trim());
-    const headerLower = headerRow.map((h) => h.toLowerCase().replace(/\s+/g, " "));
-    const expectedLower = expectedHeaders.map((h) => h.toLowerCase().replace(/\s+/g, " "));
+    const headerRow = (rows[0] || []).map((h) => String(h ?? "").trim());
+    const normalizeHeader = (h: string) =>
+      h
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .replace(/\s*\(\s*/g, "(")
+        .replace(/\s*\)\s*/g, ")")
+        .trim();
+    const headerToIndex = new Map<string, number>();
+    headerRow.forEach((h, idx) => {
+      const key = normalizeHeader(h);
+      if (key) headerToIndex.set(key, idx);
+    });
 
-    const matches =
-      headerLower.length >= expectedLower.length &&
-      expectedLower.every((h, idx) => headerLower[idx] === h);
+    const optionalAliases: Record<string, string[]> = {
+      name: ["name", "product name", "title", "product title"],
+      "currency(nok)": [
+        "currency(nok)",
+        "currency (nok)",
+        "currency",
+        "currency code",
+        "currencycode",
+      ],
+      discount: ["discount", "discount %", "discount%"],
+      "selling price": ["selling price", "price", "sell price"],
+      "start date": ["start date", "start date discount", "discount start"],
+      "end date": ["end date", "end date discount", "discount end"],
+      "bp quantity": ["bp quantity", "bp quantity", "bulk quantity"],
+      "bp price per product": ["bp price per product", "bp price", "bulk price"],
+    };
+    const resolveColIndex = (logicalKey: string): number => {
+      const key = normalizeHeader(logicalKey);
+      if (headerToIndex.has(key)) return headerToIndex.get(key)!;
+      const aliases = optionalAliases[key];
+      if (aliases) for (const a of aliases) if (headerToIndex.has(a)) return headerToIndex.get(a)!;
+      if (key === "currency(nok)") {
+        const found = [...headerToIndex.keys()].find((h) => h.includes("currency"));
+        if (found) return headerToIndex.get(found)!;
+      }
+      return -1;
+    };
 
-    if (!matches) {
+    const requiredKeysNew = expectedHeadersNew.map(normalizeHeader);
+    const requiredKeysOld = expectedHeadersOld.map(normalizeHeader);
+    const missingNew = requiredKeysNew.filter((k) => resolveColIndex(k) < 0);
+    const missingOld = requiredKeysOld.filter((k) => resolveColIndex(k) < 0);
+    const hasVariantNameColumn = missingOld.length === 0 && headerToIndex.has("variant name");
+    const validFormat = missingNew.length === 0 || hasVariantNameColumn;
+
+    if (!validFormat) {
+      const missing = missingNew.length <= missingOld.length ? missingNew : missingOld;
       throw new BadRequestException(
-        `Invalid Excel headers. Expected: ${expectedHeaders.join(", ")}`
+        `Invalid Excel headers. Missing or incorrect column names: ${missing.join(", ")}. Required (columns can be in any order): ${expectedHeadersNew.join(", ")}`
       );
     }
 
@@ -1195,6 +1331,7 @@ export class ProductsService {
       name: string;
       description?: string;
       category: string;
+      subcategory?: string;
       brand: string;
       supplier?: string;
       warehouse?: string;
@@ -1202,8 +1339,8 @@ export class ProductsService {
       size?: string;
       model?: string;
       year?: string;
+      /** Custom variants as key1=value1,key2=value2,... (one column) */
       customVariant?: string;
-      variantName?: string;
       retail?: string;
       wholesale?: string;
       sellingPrice: number;
@@ -1243,46 +1380,47 @@ export class ProductsService {
         const s = String(v ?? "").trim();
         return /^\[object\s+object\]$/i.test(s) ? "" : s;
       };
+      const col = (key: string) => normalizeCell(r[resolveColIndex(key)]);
 
-      const name = normalizeCell(r[0]);
-      const description = normalizeCell(r[1]);
-      const category = normalizeCell(r[2]);
-      const brand = normalizeCell(r[3]);
-      const supplier = normalizeCell(r[4]);
-      const warehouse = normalizeCell(r[5]);
-      const tax = normalizeCell(r[6]);
-      const size = normalizeCell(r[7]);
-      const model = normalizeCell(r[8]);
-      const year = normalizeCell(r[9]);
-      const customVariant = normalizeCell(r[10]);
-      const variantName = normalizeCell(r[11]);
-      const retail = normalizeCell(r[12]);
-      const wholesale = normalizeCell(r[13]);
-      const sellingPrice = normalizeCell(r[14]);
-      const cost = normalizeCell(r[15]);
-      const freight = normalizeCell(r[16]);
-      const currency = normalizeCell(r[17]);
-      const discount = normalizeCell(r[18]);
-      const startDate = normalizeCell(r[19]);
-      const endDate = normalizeCell(r[20]);
-      const bpQuantity = normalizeCell(r[21]);
-      const bpPricePerProduct = normalizeCell(r[22]);
-      const stock = normalizeCell(r[23]);
-      const weight = normalizeCell(r[24]);
-      const length = normalizeCell(r[25]);
-      const width = normalizeCell(r[26]);
-      const height = normalizeCell(r[27]);
-      const video = normalizeCell(r[28]);
-      const image1 = normalizeCell(r[29]);
-      const image2 = normalizeCell(r[30]);
-      const image3 = normalizeCell(r[31]);
-      const image4 = normalizeCell(r[32]);
-      const image5 = normalizeCell(r[33]);
-      const image6 = normalizeCell(r[34]);
-      const image7 = normalizeCell(r[35]);
-      const image8 = normalizeCell(r[36]);
-      const image9 = normalizeCell(r[37]);
-      const image10 = normalizeCell(r[38]);
+      const name = col("name");
+      const description = col("description");
+      const category = col("category");
+      const subcategory = col("subcategory");
+      const brand = col("brand");
+      const supplier = col("supplier");
+      const warehouse = col("warehouse");
+      const tax = col("tax");
+      const size = col("size");
+      const model = col("model");
+      const year = col("year");
+      const customVariant = col("custom variant");
+      const retail = col("retail");
+      const wholesale = col("wholesale");
+      const sellingPrice = col("selling price");
+      const cost = col("cost");
+      const freight = col("freight");
+      const currency = col("currency(nok)");
+      const discount = col("discount");
+      const startDate = col("start date");
+      const endDate = col("end date");
+      const bpQuantity = col("bp quantity");
+      const bpPricePerProduct = col("bp price per product");
+      const stock = col("stock");
+      const weight = col("weight");
+      const length = col("length");
+      const width = col("width");
+      const height = col("height");
+      const video = col("video");
+      const image1 = col("image1");
+      const image2 = col("image2");
+      const image3 = col("image3");
+      const image4 = col("image4");
+      const image5 = col("image5");
+      const image6 = col("image6");
+      const image7 = col("image7");
+      const image8 = col("image8");
+      const image9 = col("image9");
+      const image10 = col("image10");
 
       if (!name) {
         failures.push({ rowNumber: excelRowNumber, reason: "Name is required" });
@@ -1385,6 +1523,7 @@ export class ProductsService {
         name,
         description: description || undefined,
         category,
+        subcategory: subcategory || undefined,
         brand,
         supplier: supplier || undefined,
         warehouse: warehouse || undefined,
@@ -1393,7 +1532,6 @@ export class ProductsService {
         model: model || undefined,
         year: year || undefined,
         customVariant: customVariant || undefined,
-        variantName: variantName || undefined,
         retail: retail || undefined,
         wholesale: wholesale || undefined,
         sellingPrice: sellingPriceNum,
@@ -1510,20 +1648,21 @@ export class ProductsService {
       if (r.year && yearVariantType) {
         variantsToCreate.push({ vtype_id: yearVariantType.id, value: r.year });
       }
-      if (r.customVariant && r.variantName) {
+      const customPairs = this.parseCustomVariantsColumn(r.customVariant);
+      for (const { type_name, value } of customPairs) {
         let customVariantType = await this.variantTypeRepository
           .createQueryBuilder("vt")
-          .where("LOWER(vt.name) = LOWER(:name)", { name: r.customVariant })
+          .where("LOWER(vt.name) = LOWER(:name)", { name: type_name })
           .getOne();
         if (!customVariantType) {
           customVariantType = await this.variantTypeRepository.save({
-            name: r.customVariant,
+            name: type_name,
           } as any);
         }
         if (customVariantType) {
           variantsToCreate.push({
             vtype_id: customVariantType.id,
-            value: r.variantName,
+            value,
           });
         }
       }
@@ -1623,6 +1762,13 @@ export class ProductsService {
             warehouseId = warehouseEntity?.id;
           }
 
+          // Resolve subcategory: if name provided, ensure it exists under this category (create if missing)
+          let subcategoryId: string | null = null;
+          if (row.subcategory) {
+            const sub = await this.ensureSubcategoryByNameAndCategory(c.id, row.subcategory);
+            subcategoryId = sub.id;
+          }
+
           // Strict: find existing product by name (case-insensitive). If exists → update only, never create duplicate.
           const existingProduct = await this.findProductByTitle(row.name);
 
@@ -1635,6 +1781,7 @@ export class ProductsService {
               freight: row.freight || null,
               stock_quantity: row.stock,
               category_id: c.id,
+              subcategory_id: subcategoryId,
               brand_id: b.id,
               currency: row.currency,
               product_img_url: row.imageUrls?.[0] || null,
@@ -1664,10 +1811,7 @@ export class ProductsService {
               if (row.size) bulkVariants.push({ type_name: "size", value: row.size });
               if (row.model) bulkVariants.push({ type_name: "model", value: row.model });
               if (row.year) bulkVariants.push({ type_name: "year", value: row.year });
-              const customVariant =
-                row.customVariant && row.variantName
-                  ? [{ type_name: row.customVariant, value: row.variantName }]
-                  : undefined;
+              const customVariant = this.parseCustomVariantsColumn(row.customVariant);
               const bulkPayload: ChatbotProductPayload = {
                 id: existingProduct.id,
                 title: row.name,
@@ -1707,7 +1851,7 @@ export class ProductsService {
                 supplier_name: row.supplier || undefined,
                 warehouse_name: row.warehouse || undefined,
                 variants: bulkVariants.length ? bulkVariants : undefined,
-                custom_variants: customVariant,
+                custom_variants: customVariant.length ? customVariant : undefined,
                 weight: row.weight ?? undefined,
                 length: row.length ?? undefined,
                 width: row.width ?? undefined,
@@ -1742,6 +1886,7 @@ export class ProductsService {
               freight: row.freight || null,
               stock_quantity: row.stock,
               category_id: c.id,
+              subcategory_id: subcategoryId,
               brand_id: b.id,
               currency: row.currency,
               sku,
@@ -1787,10 +1932,7 @@ export class ProductsService {
               if (row.size) bulkVariants.push({ type_name: "size", value: row.size });
               if (row.model) bulkVariants.push({ type_name: "model", value: row.model });
               if (row.year) bulkVariants.push({ type_name: "year", value: row.year });
-              const customVariant =
-                row.customVariant && row.variantName
-                  ? [{ type_name: row.customVariant, value: row.variantName }]
-                  : undefined;
+              const customVariant = this.parseCustomVariantsColumn(row.customVariant);
               const bulkPayload: ChatbotProductPayload = {
                 id: String(insertedId),
                 title: row.name,
@@ -1830,7 +1972,7 @@ export class ProductsService {
                 supplier_name: row.supplier || undefined,
                 warehouse_name: row.warehouse || undefined,
                 variants: bulkVariants.length ? bulkVariants : undefined,
-                custom_variants: customVariant,
+                custom_variants: customVariant.length ? customVariant : undefined,
                 weight: row.weight ?? undefined,
                 length: row.length ?? undefined,
                 width: row.width ?? undefined,
@@ -1892,6 +2034,7 @@ export class ProductsService {
       freight,
       stock_quantity,
       category_id,
+      subcategory_id: subcategoryIdDto,
       brand_id,
       currency,
       product_img_url,
@@ -1921,6 +2064,22 @@ export class ProductsService {
       throw new BadRequestException("Category not found");
     }
 
+    let resolvedSubcategoryId: string | null = null;
+    if (subcategoryIdDto) {
+      const sub = await this.subcategoryRepository.findOne({
+        where: { id: subcategoryIdDto },
+      });
+      if (!sub) {
+        throw new BadRequestException("Subcategory not found");
+      }
+      if (sub.cat_id !== category_id) {
+        throw new BadRequestException(
+          "Subcategory does not belong to the selected category"
+        );
+      }
+      resolvedSubcategoryId = sub.id;
+    }
+
     const brand = await this.brandRepository.findOne({ where: { id: brand_id } });
 
     if (!brand) {
@@ -1944,6 +2103,7 @@ export class ProductsService {
       freight,
       stock_quantity,
       category_id,
+      subcategory_id: resolvedSubcategoryId,
       brand_id,
       currency,
       sku,
@@ -2025,6 +2185,7 @@ export class ProductsService {
       where: { id: savedProduct.id },
       relations: [
         "category",
+        "subcategory",
         "brand",
         "supplier",
         "warehouse",
@@ -2073,6 +2234,7 @@ export class ProductsService {
       freight,
       stock_quantity,
       category_id,
+      subcategory_id: subcategoryIdDto,
       brand_id,
       currency,
       product_img_url,
@@ -2105,6 +2267,26 @@ export class ProductsService {
 
     if (!category) {
       throw new BadRequestException("Category not found");
+    }
+
+    let resolvedSubcategoryId: string | null = null;
+    if (subcategoryIdDto !== undefined) {
+      if (subcategoryIdDto === null || subcategoryIdDto === "") {
+        resolvedSubcategoryId = null;
+      } else {
+        const sub = await this.subcategoryRepository.findOne({
+          where: { id: subcategoryIdDto },
+        });
+        if (!sub) {
+          throw new BadRequestException("Subcategory not found");
+        }
+        if (sub.cat_id !== category_id) {
+          throw new BadRequestException(
+            "Subcategory does not belong to the selected category"
+          );
+        }
+        resolvedSubcategoryId = sub.id;
+      }
     }
 
     const brand = await this.brandRepository.findOne({ where: { id: brand_id } });
@@ -2142,6 +2324,10 @@ export class ProductsService {
       warehouse_id,
       total_price,
     };
+
+    if (subcategoryIdDto !== undefined) {
+      updateData.subcategory_id = resolvedSubcategoryId;
+    }
 
     if (typeof is_active === "boolean") {
       (updateData as any).is_active = is_active;
@@ -2289,6 +2475,7 @@ export class ProductsService {
       where: { id },
       relations: [
         "category",
+        "subcategory",
         "brand",
         "supplier",
         "warehouse",
@@ -2320,6 +2507,7 @@ export class ProductsService {
     const product = await this.productRepository
       .createQueryBuilder("product")
       .leftJoinAndSelect("product.category", "category")
+      .leftJoinAndSelect("product.subcategory", "subcategory")
       .leftJoinAndSelect("product.brand", "brand")
       .leftJoinAndSelect("product.images", "images")
       .leftJoinAndSelect("product.variants", "variants")
@@ -2353,6 +2541,7 @@ export class ProductsService {
     const qb = this.productRepository
       .createQueryBuilder("product")
       .leftJoinAndSelect("product.category", "category")
+      .leftJoinAndSelect("product.subcategory", "subcategory")
       .leftJoinAndSelect("product.brand", "brand")
       .orderBy("product.created_at", "DESC")
       .skip(skip)

@@ -86,6 +86,27 @@ export class CustomerVisibilityGroupsDropdownDataDto {
   customerVisibilityGroupsDropdown: DropdownItemDto[];
 }
 
+export class SubcategoriesDropdownDataDto {
+  @ApiProperty({
+    type: [DropdownItemDto],
+    description: "Array of subcategories for dropdown",
+  })
+  subcategoriesDropdown: DropdownItemDto[];
+}
+
+export class SubcategoriesDropdownResponseDto {
+  @ApiProperty({ example: 200 })
+  statusCode: number;
+  @ApiProperty({ example: true })
+  status: boolean;
+  @ApiProperty({ example: "Subcategories dropdown data retrieved successfully" })
+  message: string;
+  @ApiProperty({ example: "Dropdowns" })
+  heading: string;
+  @ApiProperty({ type: SubcategoriesDropdownDataDto })
+  data: SubcategoriesDropdownDataDto;
+}
+
 export class RolesDropdownResponseDto {
   @ApiProperty({ example: 200 })
   statusCode: number;

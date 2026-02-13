@@ -201,6 +201,13 @@ export class ProductDto {
   category_id: string;
 
   @ApiProperty({
+    description: "Subcategory ID",
+    example: "123e4567-e89b-12d3-a456-426614174000",
+    nullable: true,
+  })
+  subcategory_id: string | null;
+
+  @ApiProperty({
     description: "Brand ID",
     example: "123e4567-e89b-12d3-a456-426614174000",
   })
@@ -262,6 +269,14 @@ export class ProductDto {
     type: CategoryDto,
   })
   category: CategoryDto;
+
+  @ApiProperty({
+    description: "Product subcategory",
+    type: "object",
+    nullable: true,
+    properties: { id: { type: "string" }, name: { type: "string" } },
+  })
+  subcategory?: { id: string; name: string } | null;
 
   @ApiProperty({
     description: "Product brand",

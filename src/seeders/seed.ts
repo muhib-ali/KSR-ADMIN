@@ -11,6 +11,8 @@ import { City } from "../entities/city.entity";
 import { Tenant } from "../entities/tenant.entity";
 import { TenantAllowedLocation } from "../entities/tenant-allowed-location.entity";
 import { Domain } from "../entities/domain.entity";
+import { Category } from "../entities/category.entity";
+import { Subcategory } from "../entities/subcategory.entity";
 import * as bcrypt from "bcrypt";
 
 const AppDataSource = new DataSource(dataSourceOptions);
@@ -125,6 +127,12 @@ async function seed() {
         title: "Categories",
         slug: "categories",
         description: "Manage categories",
+        is_active: true,
+      },
+      {
+        title: "Subcategories",
+        slug: "subcategories",
+        description: "Manage subcategories",
         is_active: true,
       },
       {
@@ -248,6 +256,11 @@ async function seed() {
         description: "Get all categories for dropdown",
       }, // this record will insert for dropdowns module only
       {
+        slug: "getAllSubcategories",
+        title: "Get All Subcategories",
+        description: "Get all subcategories for dropdown",
+      }, // this record will insert for dropdowns module only
+      {
         slug: "getAllBrands",
         title: "Get All Brands",
         description: "Get all brands for dropdown",
@@ -316,6 +329,7 @@ async function seed() {
           (permDef.slug === "getAllRoles" ||
             permDef.slug === "getAllModules" ||
             permDef.slug === "getAllCategories" ||
+            permDef.slug === "getAllSubcategories" ||
             permDef.slug === "getAllBrands" ||
             permDef.slug === "getAllTaxes" ||
             permDef.slug === "getAllSuppliers" ||
@@ -344,6 +358,7 @@ async function seed() {
           permDef.slug !== "getAllRoles" &&
           permDef.slug !== "getAllModules" &&
           permDef.slug !== "getAllCategories" &&
+          permDef.slug !== "getAllSubcategories" &&
           permDef.slug !== "getAllBrands" &&
           permDef.slug !== "getAllTaxes" &&
           permDef.slug !== "getAllSuppliers" &&
@@ -434,6 +449,7 @@ async function seed() {
         "getAllRoles",
         "getAllModules",
         "getAllCategories",
+        "getAllSubcategories",
         "getAllBrands",
         "getAllVariantTypes",
         "getAllCustomerVisibilityGroups",
@@ -745,6 +761,34 @@ async function seed() {
           );
         }
       }
+    }
+
+    // Optional: seed sample category and subcategory for testing
+    console.log("Seeding sample category and subcategory...");
+    const categoryRepository = AppDataSource.getRepository(Category);
+    const subcategoryRepository = AppDataSource.getRepository(Subcategory);
+    let sampleCategory = await categoryRepository.findOne({
+      where: { name: "Sample Category" },
+    });
+    if (!sampleCategory) {
+      sampleCategory = await categoryRepository.save({
+        name: "Sample Category",
+        description: "Sample category for testing subcategories",
+        is_active: true,
+      });
+      console.log("Created sample category: Sample Category");
+    }
+    const existingSub = await subcategoryRepository.findOne({
+      where: { name: "Sample Subcategory", cat_id: sampleCategory.id },
+    });
+    if (!existingSub) {
+      await subcategoryRepository.save({
+        name: "Sample Subcategory",
+        description: "Sample subcategory for testing",
+        cat_id: sampleCategory.id,
+        is_active: true,
+      });
+      console.log("Created sample subcategory: Sample Subcategory");
     }
 
     console.log("Seeding completed successfully!");

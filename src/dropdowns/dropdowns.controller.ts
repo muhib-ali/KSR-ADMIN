@@ -1,4 +1,4 @@
-import { Controller, Get } from "@nestjs/common";
+import { Controller, Get, Query } from "@nestjs/common";
 import {
   ApiTags,
   ApiOperation,
@@ -16,6 +16,7 @@ import {
   WarehousesDropdownResponseDto,
   VariantTypesDropdownResponseDto,
   CustomerVisibilityGroupsDropdownResponseDto,
+  SubcategoriesDropdownResponseDto,
 } from "./dto/dropdown-response.dto";
 
 @ApiTags("Dropdowns")
@@ -58,6 +59,18 @@ export class DropdownsController {
   @ApiResponse({ status: 401, description: "Unauthorized" })
   async getAllCategories() {
     return this.dropdownsService.getAllCategories();
+  }
+
+  @Get("getAllSubcategories")
+  @ApiOperation({ summary: "Get all active subcategories for dropdown, optionally by category" })
+  @ApiResponse({
+    status: 200,
+    description: "Subcategories dropdown data retrieved successfully",
+    type: SubcategoriesDropdownResponseDto,
+  })
+  @ApiResponse({ status: 401, description: "Unauthorized" })
+  async getAllSubcategories(@Query("categoryId") categoryId?: string) {
+    return this.dropdownsService.getAllSubcategories(categoryId);
   }
 
   @Get("getAllBrands")

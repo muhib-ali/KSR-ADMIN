@@ -17,6 +17,7 @@ import { DropdownsModule } from "./dropdowns/dropdowns.module";
 import { HealthModule } from "./health/health.module";
 import { SharedModule } from "./shared/shared.module";
 import { CategoriesModule } from "./categories/categories.module";
+import { SubcategoriesModule } from "./subcategories/subcategories.module";
 import { BrandsModule } from "./brands/brands.module";
 import { ProductsModule } from "./products/products.module";
 import { TaxesModule } from "./taxes/taxes.module";
@@ -119,6 +120,7 @@ import { OauthToken } from "./entities/oauth-token.entity";
     UsersModule,
     DropdownsModule,
     CategoriesModule,
+    SubcategoriesModule,
     BrandsModule,
     ProductsModule,
     TaxesModule,
