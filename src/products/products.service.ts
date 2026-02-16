@@ -1120,6 +1120,32 @@ export class ProductsService {
     }
   }
 
+  private async ensureSupplierByName(name: string): Promise<Supplier> {
+    const trimmed = this.normalizeName(name);
+    const existing = await this.supplierRepository
+      .createQueryBuilder("s")
+      .where("LOWER(s.supplier_name) = LOWER(:name)", { name: trimmed })
+      .getOne();
+    if (existing) return existing;
+
+    try {
+      return await this.supplierRepository.save({
+        supplier_name: trimmed,
+        email: null as any,
+        phone: null as any,
+        address: null as any,
+        is_active: true,
+      } as any);
+    } catch {
+      const again = await this.supplierRepository
+        .createQueryBuilder("s")
+        .where("LOWER(s.supplier_name) = LOWER(:name)", { name: trimmed })
+        .getOne();
+      if (again) return again;
+      throw new BadRequestException(`Failed to create supplier: ${trimmed}`);
+    }
+  }
+
   /** Find subcategory by name under category; if not found, create and return. */
   private async ensureSubcategoryByNameAndCategory(
     categoryId: string,
@@ -1440,7 +1466,7 @@ export class ProductsService {
       }
 
       const sellingPriceNum = parseFloat(sellingPrice);
-      if (!Number.isFinite(sellingPriceNum) || sellingPriceNum <= 0) {
+      if (!Number.isFinite(sellingPriceNum) || sellingPriceNum < 0) {
         failures.push({ rowNumber: excelRowNumber, reason: "Invalid selling price" });
         continue;
       }
@@ -1576,6 +1602,22 @@ export class ProductsService {
       if (!original) continue;
       const b = await this.ensureBrandByName(original);
       brandMap.set(key, b);
+    }
+
+    // Pre-fetch all suppliers (create if not exists, like category/brand)
+    const uniqueSupplierKeys = Array.from(
+      new Set(
+        validRows
+          .map((r) => this.normalizeNameKey(r.supplier))
+          .filter(Boolean)
+      )
+    );
+    const supplierMap = new Map<string, Supplier>();
+    for (const key of uniqueSupplierKeys) {
+      const original = validRows.find((r) => this.normalizeNameKey(r.supplier) === key)?.supplier;
+      if (!original) continue;
+      const s = await this.ensureSupplierByName(original);
+      supplierMap.set(key, s);
     }
 
     // Pre-fetch default variant types (size, model, year)
@@ -1745,14 +1787,9 @@ export class ProductsService {
               .getOne();
             taxId = taxEntity?.id;
           }
-          let supplierId: string | undefined;
-          if (row.supplier) {
-            const supplierEntity = await this.supplierRepository
-              .createQueryBuilder("s")
-              .where("LOWER(s.supplier_name) = LOWER(:name)", { name: row.supplier })
-              .getOne();
-            supplierId = supplierEntity?.id;
-          }
+          const supplierId = row.supplier
+            ? supplierMap.get(this.normalizeNameKey(row.supplier))?.id
+            : undefined;
           let warehouseId: string | undefined;
           if (row.warehouse) {
             const warehouseEntity = await this.warehouseRepository
