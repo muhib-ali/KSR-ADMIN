@@ -85,6 +85,42 @@ export class ProductsService {
     }
   }
 
+  /** Get file_name for product_images row: basename for zip-gallery, else from products path. */
+  private getProductImageFileName(url: string): string {
+    const fromProducts = this.extractProductsFileNameFromUrl(url);
+    if (fromProducts) return fromProducts;
+    try {
+      const u = new URL(url);
+      const segs = u.pathname.split("/").filter(Boolean);
+      const last = segs[segs.length - 1];
+      return last || url;
+    } catch {
+      return url;
+    }
+  }
+
+  /** Whether the URL points to zip-gallery (shared); we must not delete the file when removing from a product. */
+  private isZipGalleryUrl(url: string | undefined | null): boolean {
+    if (!url || typeof url !== "string") return false;
+    return url.includes("zip-gallery");
+  }
+
+  /**
+   * Resolve image1..image10 cell value to full URL.
+   * If already http(s) URL, return as-is. Otherwise treat as zip-gallery filename only when
+   * the value has a valid image extension (.png, .jpg, .jpeg, .webp, .gif) so that same-name
+   * different-extension files (e.g. photo.png vs photo.jpg) are distinguished.
+   */
+  private resolveImageUrl(value: string | undefined | null): string | null {
+    const s = (value ?? "").trim();
+    if (!s) return null;
+    if (s.startsWith("http://") || s.startsWith("https://")) return s;
+    const basename = s.replace(/^.*[/\\]/, "").replace(/[^A-Za-z0-9._-]/g, "_").trim();
+    if (!basename) return null;
+    if (!/\.(png|jpg|jpeg|webp|gif)$/i.test(basename)) return null;
+    return `${this.filesBackendBaseUrl}/public/zip-gallery/${basename}`;
+  }
+
   private async deleteProductImageFromFilesBackend(
     fileName: string,
     authorizationHeader?: string
@@ -909,7 +945,7 @@ export class ProductsService {
     const fileName = image.file_name;
     await this.productImageRepository.remove(image);
 
-    if (fileName) {
+    if (fileName && !this.isZipGalleryUrl((image as any).url)) {
       try {
         await this.deleteProductImageFromFilesBackend(fileName, authorizationHeader);
       } catch {
@@ -1532,17 +1568,17 @@ export class ProductsService {
       }
 
       const imageUrls = [
-        image1,
-        image2,
-        image3,
-        image4,
-        image5,
-        image6,
-        image7,
-        image8,
-        image9,
-        image10,
-      ].filter((s) => !!s);
+        this.resolveImageUrl(image1),
+        this.resolveImageUrl(image2),
+        this.resolveImageUrl(image3),
+        this.resolveImageUrl(image4),
+        this.resolveImageUrl(image5),
+        this.resolveImageUrl(image6),
+        this.resolveImageUrl(image7),
+        this.resolveImageUrl(image8),
+        this.resolveImageUrl(image9),
+        this.resolveImageUrl(image10),
+      ].filter((s): s is string => !!s);
 
       validRows.push({
         rowNumber: excelRowNumber,
@@ -1747,7 +1783,7 @@ export class ProductsService {
           this.productImageRepository.create({
             product_id: productId,
             url,
-            file_name: this.extractProductsFileNameFromUrl(url) || url,
+            file_name: this.getProductImageFileName(url),
             sort_order: idx + 2,
           })
         );
@@ -2490,7 +2526,8 @@ export class ProductsService {
       previousFileName &&
       previousUrl &&
       nextUrl.trim() !== "" &&
-      nextUrl !== previousUrl
+      nextUrl !== previousUrl &&
+      !this.isZipGalleryUrl(previousUrl)
     ) {
       try {
         await this.deleteProductImageFromFilesBackend(previousFileName, authHeader);
@@ -2638,6 +2675,7 @@ export class ProductsService {
 
     const images = Array.isArray((product as any).images) ? (product as any).images : [];
     const imageFileNames = images
+      .filter((i: any) => !this.isZipGalleryUrl(i?.url))
       .map((i: any) => String(i?.file_name ?? "").trim())
       .filter(Boolean);
 
