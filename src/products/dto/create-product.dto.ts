@@ -280,4 +280,14 @@ export class CreateProductDto {
   @Type(() => CreateBulkPriceDto)
   @IsOptional()
   bulk_prices?: CreateBulkPriceDto[];
+
+  @ApiProperty({
+    description: "Product image URLs (external links, stored as gallery images)",
+    example: ["https://example.com/image1.jpg", "https://example.com/image2.png"],
+    required: false,
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  imageUrls?: string[];
 }

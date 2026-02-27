@@ -288,4 +288,14 @@ export class UpdateProductDto {
   @Type(() => CreateBulkPriceDto)
   @IsOptional()
   bulk_prices?: CreateBulkPriceDto[];
+
+  @ApiProperty({
+    description: "Product image URLs (external links); replaces existing external gallery URLs",
+    example: ["https://example.com/image1.jpg"],
+    required: false,
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  image_urls?: string[];
 }

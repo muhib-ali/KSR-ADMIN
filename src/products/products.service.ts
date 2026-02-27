@@ -85,6 +85,63 @@ export class ProductsService {
     }
   }
 
+  /** Get file_name for product_images row: basename for zip-gallery, else from products path. */
+  private getProductImageFileName(url: string): string {
+    const fromProducts = this.extractProductsFileNameFromUrl(url);
+    if (fromProducts) return fromProducts;
+    try {
+      const u = new URL(url);
+      const segs = u.pathname.split("/").filter(Boolean);
+      const last = segs[segs.length - 1];
+      return last || url;
+    } catch {
+      return url;
+    }
+  }
+
+  /** file_name for external (non-upload) image URLs so we can identify them and avoid deleting from Files backend. */
+  private getExternalImageFileName(url: string, index: number): string {
+    try {
+      const u = new URL(url);
+      const segs = u.pathname.split("/").filter(Boolean);
+      const last = segs[segs.length - 1];
+      if (last && /\.(png|jpg|jpeg|webp|gif)$/i.test(last)) return `external-${index}-${last}`;
+    } catch {
+      // ignore
+    }
+    return `external-${index}`;
+  }
+
+  /** True if the image URL is from our Files backend (so we may delete the file there). */
+  private isFilesBackendImageUrl(url: string | undefined | null): boolean {
+    if (!url || typeof url !== "string") return false;
+    const base = this.filesBackendBaseUrl?.trim();
+    if (!base) return false;
+    return url.startsWith(base);
+  }
+
+  /** Whether the URL points to zip-gallery (shared); we must not delete the file when removing from a product. */
+  private isZipGalleryUrl(url: string | undefined | null): boolean {
+    if (!url || typeof url !== "string") return false;
+    return url.includes("zip-gallery");
+  }
+
+  /**
+   * Resolve image1..image10 cell value to full URL.
+   * If already http(s) URL, return as-is. Otherwise treat as zip-gallery filename only when
+   * the value has a valid image extension (.png, .jpg, .jpeg, .webp, .gif) so that same-name
+   * different-extension files (e.g. photo.png vs photo.jpg) are distinguished.
+   */
+  private resolveImageUrl(value: string | undefined | null): string | null {
+    const s = (value ?? "").trim();
+    if (!s) return null;
+    if (s.startsWith("http://") || s.startsWith("https://")) return s;
+    const basename = s.replace(/^.*[/\\]/, "").replace(/[^A-Za-z0-9._-]/g, "_").trim();
+    if (!basename) return null;
+    if (!/\.(png|jpg|jpeg|webp|gif)$/i.test(basename)) return null;
+    return `${this.filesBackendBaseUrl}/public/zip-gallery/${basename}`;
+  }
+
   private async deleteProductImageFromFilesBackend(
     fileName: string,
     authorizationHeader?: string
@@ -909,7 +966,7 @@ export class ProductsService {
     const fileName = image.file_name;
     await this.productImageRepository.remove(image);
 
-    if (fileName) {
+    if (fileName && this.isFilesBackendImageUrl((image as any).url) && !this.isZipGalleryUrl((image as any).url)) {
       try {
         await this.deleteProductImageFromFilesBackend(fileName, authorizationHeader);
       } catch {
@@ -1532,17 +1589,17 @@ export class ProductsService {
       }
 
       const imageUrls = [
-        image1,
-        image2,
-        image3,
-        image4,
-        image5,
-        image6,
-        image7,
-        image8,
-        image9,
-        image10,
-      ].filter((s) => !!s);
+        this.resolveImageUrl(image1),
+        this.resolveImageUrl(image2),
+        this.resolveImageUrl(image3),
+        this.resolveImageUrl(image4),
+        this.resolveImageUrl(image5),
+        this.resolveImageUrl(image6),
+        this.resolveImageUrl(image7),
+        this.resolveImageUrl(image8),
+        this.resolveImageUrl(image9),
+        this.resolveImageUrl(image10),
+      ].filter((s): s is string => !!s);
 
       validRows.push({
         rowNumber: excelRowNumber,
@@ -1747,7 +1804,7 @@ export class ProductsService {
           this.productImageRepository.create({
             product_id: productId,
             url,
-            file_name: this.extractProductsFileNameFromUrl(url) || url,
+            file_name: this.getProductImageFileName(url),
             sort_order: idx + 2,
           })
         );
@@ -2091,6 +2148,7 @@ export class ProductsService {
       variants,
       customer_groups,
       bulk_prices,
+      imageUrls,
     } = createProductDto;
 
     const category = await this.categoryRepository.findOne({
@@ -2218,6 +2276,22 @@ export class ProductsService {
       await this.bulkPriceRepository.save(bulkPriceEntities);
     }
 
+    // Save external image URLs as product_images (gallery)
+    const urlList = Array.isArray(imageUrls) ? imageUrls.filter((u): u is string => typeof u === "string" && u.trim().length > 0).slice(0, 10) : [];
+    if (urlList.length > 0) {
+      const imagesToSave = urlList.map((url, idx) => {
+        const trimmed = String(url).trim();
+        const fileName = this.getExternalImageFileName(trimmed, idx + 1);
+        return this.productImageRepository.create({
+          product_id: savedProduct.id,
+          url: trimmed,
+          file_name: fileName,
+          sort_order: idx + 1,
+        });
+      });
+      await this.productImageRepository.save(imagesToSave);
+    }
+
     const productWithRelations = await this.productRepository.findOne({
       where: { id: savedProduct.id },
       relations: [
@@ -2291,6 +2365,7 @@ export class ProductsService {
       variants,
       customer_groups,
       bulk_prices,
+      image_urls,
     } = updateProductDto;
 
     const product = await this.productRepository.findOne({ where: { id } });
@@ -2483,14 +2558,46 @@ export class ProductsService {
       }
     }
 
-    // Delete old image file if a new one was uploaded
+    // Sync external image URLs (replace existing external gallery URLs with the new list)
+    if (image_urls !== undefined) {
+      const existingImages = await this.productImageRepository.find({
+        where: { product_id: id },
+        order: { sort_order: "ASC" as any },
+      });
+      const toRemove = existingImages.filter((img) => !this.isFilesBackendImageUrl((img as any).url));
+      if (toRemove.length > 0) {
+        await this.productImageRepository.remove(toRemove);
+      }
+      const urlList = Array.isArray(image_urls) ? image_urls.filter((u): u is string => typeof u === "string" && u.trim().length > 0).slice(0, 10) : [];
+      if (urlList.length > 0) {
+        const remaining = await this.productImageRepository.find({
+          where: { product_id: id },
+          order: { sort_order: "ASC" as any },
+        });
+        const maxSort = remaining.length === 0 ? 0 : Math.max(...remaining.map((r) => Number((r as any).sort_order) || 0));
+        const imagesToSave = urlList.map((url, idx) => {
+          const trimmed = String(url).trim();
+          return this.productImageRepository.create({
+            product_id: id,
+            url: trimmed,
+            file_name: this.getExternalImageFileName(trimmed, idx + 1),
+            sort_order: maxSort + idx + 1,
+          });
+        });
+        await this.productImageRepository.save(imagesToSave);
+      }
+    }
+
+    // Delete old image file if a new one was uploaded (only for images stored on our Files backend)
     const nextUrl = updateData.product_img_url || product_img_url;
     if (
       typeof nextUrl === "string" &&
       previousFileName &&
       previousUrl &&
       nextUrl.trim() !== "" &&
-      nextUrl !== previousUrl
+      nextUrl !== previousUrl &&
+      this.isFilesBackendImageUrl(previousUrl) &&
+      !this.isZipGalleryUrl(previousUrl)
     ) {
       try {
         await this.deleteProductImageFromFilesBackend(previousFileName, authHeader);
@@ -2638,6 +2745,7 @@ export class ProductsService {
 
     const images = Array.isArray((product as any).images) ? (product as any).images : [];
     const imageFileNames = images
+      .filter((i: any) => !this.isZipGalleryUrl(i?.url))
       .map((i: any) => String(i?.file_name ?? "").trim())
       .filter(Boolean);
 
