@@ -60,7 +60,7 @@ export class ProductsService {
   ) {}
 
   private readonly filesBackendBaseUrl =
-    process.env.FILES_BACKEND_URL || "http://localhost:3003";
+    process.env.FILES_BACKEND_URL;
 
   private extractProductsFileNameFromUrl(url: string): string | null {
     try {
