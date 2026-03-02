@@ -17,6 +17,7 @@ import { DropdownsModule } from "./dropdowns/dropdowns.module";
 import { HealthModule } from "./health/health.module";
 import { SharedModule } from "./shared/shared.module";
 import { CategoriesModule } from "./categories/categories.module";
+import { SubcategoriesModule } from "./subcategories/subcategories.module";
 import { BrandsModule } from "./brands/brands.module";
 import { ProductsModule } from "./products/products.module";
 import { TaxesModule } from "./taxes/taxes.module";
@@ -29,6 +30,7 @@ import { OrdersModule } from "./orders/orders.module";
 import { BulkOrdersModule } from "./bulk-orders/bulk-orders.module";
 import { ReviewsModule } from "./reviews/reviews.module";
 import { BlogsModule } from "./blogs/blogs.module";
+import { DashboardModule } from "./dashboard/dashboard.module";
 import { PermissionMiddleware } from "./middleware/permission.middleware";
 import { GlobalExceptionFilter } from "./filters/global-exception.filter";
 import { ThrottlerGuard } from "@nestjs/throttler";
@@ -118,6 +120,7 @@ import { OauthToken } from "./entities/oauth-token.entity";
     UsersModule,
     DropdownsModule,
     CategoriesModule,
+    SubcategoriesModule,
     BrandsModule,
     ProductsModule,
     TaxesModule,
@@ -131,6 +134,7 @@ import { OauthToken } from "./entities/oauth-token.entity";
     BulkOrdersModule,
     ReviewsModule,
     BlogsModule,
+    DashboardModule,
   ],
   providers: [
     // Global exception filter
@@ -149,7 +153,7 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(PermissionMiddleware)
-      .exclude('/auth/(.*)', '/health/(.*)', '/api', '/api/(.*)', '/currency/(.*)', '/') // Exclude auth, health, currency, swagger, and root routes
+      .exclude('/auth/(.*)', '/health/(.*)', '/currency/(.*)', '/') // Exclude auth, health, currency, and root routes
       .forRoutes("*"); // Apply to all other routes
   }
 }

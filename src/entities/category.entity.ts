@@ -1,5 +1,6 @@
-import { Entity, Column, Unique, Index } from "typeorm";
+import { Entity, Column, Unique, Index, OneToMany } from "typeorm";
 import { BaseAuditColumns } from "./base-audit-columns.entity";
+import { Subcategory } from "./subcategory.entity";
 
 @Entity("categories")
 @Unique(["name"])
@@ -10,4 +11,7 @@ export class Category extends BaseAuditColumns {
 
   @Column({ type: "varchar", nullable: true })
   description: string;
+
+  @OneToMany(() => Subcategory, (sub) => sub.category)
+  subcategories: Subcategory[];
 }

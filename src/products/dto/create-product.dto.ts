@@ -86,6 +86,15 @@ export class CreateProductDto {
   category_id: string;
 
   @ApiProperty({
+    description: "Subcategory ID (UUID)",
+    example: "123e4567-e89b-12d3-a456-426614174000",
+    required: false,
+  })
+  @IsUUID()
+  @IsOptional()
+  subcategory_id?: string;
+
+  @ApiProperty({
     description: "Brand ID (UUID)",
     example: "123e4567-e89b-12d3-a456-426614174000",
   })
@@ -95,7 +104,7 @@ export class CreateProductDto {
 
   @ApiProperty({
     description: "Currency code",
-    example: "USD",
+    example: "NOK",
   })
   @IsString()
   @IsNotEmpty()
@@ -271,4 +280,14 @@ export class CreateProductDto {
   @Type(() => CreateBulkPriceDto)
   @IsOptional()
   bulk_prices?: CreateBulkPriceDto[];
+
+  @ApiProperty({
+    description: "Product image URLs (external links, stored as gallery images)",
+    example: ["https://example.com/image1.jpg", "https://example.com/image2.png"],
+    required: false,
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  imageUrls?: string[];
 }

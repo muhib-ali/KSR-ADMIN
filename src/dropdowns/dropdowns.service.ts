@@ -10,6 +10,7 @@ import { Supplier } from "../entities/supplier.entity";
 import { Warehouse } from "../entities/warehouse.entity";
 import { VariantType } from "../entities/variant-type.entity";
 import { CustomerVisibilityGroup } from "../entities/customer-visibility-group.entity";
+import { Subcategory } from "../entities/subcategory.entity";
 import { ResponseHelper } from "../common/helpers/response.helper";
 import { ApiResponse } from "../common/interfaces/api-response.interface";
 
@@ -33,7 +34,9 @@ export class DropdownsService {
     @InjectRepository(VariantType)
     private variantTypeRepository: Repository<VariantType>,
     @InjectRepository(CustomerVisibilityGroup)
-    private customerVisibilityGroupRepository: Repository<CustomerVisibilityGroup>
+    private customerVisibilityGroupRepository: Repository<CustomerVisibilityGroup>,
+    @InjectRepository(Subcategory)
+    private subcategoryRepository: Repository<Subcategory>
   ) {}
 
   async getAllRoles(): Promise<ApiResponse<any>> {
@@ -92,6 +95,25 @@ export class DropdownsService {
     return ResponseHelper.success(
       { categoriesDropdown },
       "Categories dropdown data retrieved successfully",
+      "Dropdowns"
+    );
+  }
+
+  async getAllSubcategories(categoryId?: string): Promise<ApiResponse<any>> {
+    const where: any = { is_active: true };
+    if (categoryId) where.cat_id = categoryId;
+    const subcategories = await this.subcategoryRepository.find({
+      where,
+      select: ["id", "name"],
+      order: { name: "ASC" },
+    });
+    const subcategoriesDropdown = subcategories.map((s) => ({
+      label: s.name,
+      value: s.id,
+    }));
+    return ResponseHelper.success(
+      { subcategoriesDropdown },
+      "Subcategories dropdown data retrieved successfully",
       "Dropdowns"
     );
   }

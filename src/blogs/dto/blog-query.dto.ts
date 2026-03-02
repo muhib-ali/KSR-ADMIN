@@ -5,7 +5,7 @@ export class BlogQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
-
+ 
   @IsOptional()
   @IsBoolean()
   @Type(() => Boolean)
