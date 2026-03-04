@@ -119,10 +119,15 @@ export class PermissionMiddleware implements NestMiddleware {
   }
 
   private isExcludedRoute(pathname: string): boolean {
-    const excludedPaths = ["/auth", "/health", "/currency"];
+    const excludedPaths = [
+      "/auth",
+      "/health",
+      "/currency",
+      "/cms/home-sections", // public home page sections for customer frontend
+    ];
     // Exact match for root path
     if (pathname === "/") return true;
-    
+
     return excludedPaths.some((path) => pathname.startsWith(path));
   }
 

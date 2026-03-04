@@ -202,6 +202,12 @@ async function seed() {
         is_active: true,
       },
       {
+        title: "CMS",
+        slug: "cms",
+        description: "Manage home page CMS sections",
+        is_active: true,
+      },
+      {
         title: "Dashboard",
         slug: "dashboard",
         description: "Dashboard analytics",
