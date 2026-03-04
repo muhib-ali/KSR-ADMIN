@@ -5,7 +5,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository, IsNull, Not } from "typeorm";
+import { Repository, IsNull, Not, In } from "typeorm";
 import { HomeCmsSection } from "../entities/home-cms-section.entity";
 import { CreateCmsSectionDto } from "./dto/create-cms-section.dto";
 import { UpdateCmsSectionDto } from "./dto/update-cms-section.dto";
@@ -146,17 +146,23 @@ export class CmsService {
 
     if (rows.length > 0) {
       const sectionKeys = rows.map((r) => r.section_key);
-      const counts = await this.repo
-        .createQueryBuilder("s")
-        .select("s.section_key", "section_key")
-        .addSelect("COUNT(*)", "cnt")
-        .where("s.section_key IN (:...keys)", { keys: sectionKeys })
-        .andWhere("s.subsection_key IS NOT NULL")
-        .groupBy("s.section_key")
-        .getRawMany<{ section_key: string; cnt: string }>();
-      const countMap = new Map(counts.map((c) => [c.section_key, Number(c.cnt)]));
+      const subsectionsList = await this.repo.find({
+        where: {
+          section_key: In(sectionKeys),
+          subsection_key: Not(IsNull()),
+        },
+        order: { sort_order: "ASC" },
+      });
+      const subsectionsBySection = new Map<string, HomeCmsSection[]>();
+      for (const sub of subsectionsList) {
+        const arr = subsectionsBySection.get(sub.section_key) ?? [];
+        arr.push(sub);
+        subsectionsBySection.set(sub.section_key, arr);
+      }
       rows.forEach((r) => {
-        (r as any).subsections_count = countMap.get(r.section_key) ?? 0;
+        const subsections = subsectionsBySection.get(r.section_key) ?? [];
+        (r as any).subsections = subsections;
+        (r as any).subsections_count = subsections.length;
       });
     }
 
@@ -297,24 +303,5 @@ export class CmsService {
     }
   }
 
-  /** Public API: get all sections with subsections for home page (no auth). */
-  async getHomeSections(): Promise<CmsSectionWithSubsections[]> {
-    const mains = await this.repo.find({
-      where: { subsection_key: IsNull(), is_active: true },
-      order: { sort_order: "ASC" },
-    });
-    const result: CmsSectionWithSubsections[] = [];
-    for (const main of mains) {
-      const subOnly = await this.repo.find({
-        where: {
-          section_key: main.section_key,
-          is_active: true,
-          subsection_key: Not(IsNull()),
-        },
-        order: { sort_order: "ASC" },
-      });
-      result.push({ ...main, subsections: subOnly });
-    }
-    return result;
-  }
+ 
 }
