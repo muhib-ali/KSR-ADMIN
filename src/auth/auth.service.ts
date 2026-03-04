@@ -21,7 +21,8 @@ import { CacheService } from "../cache/cache.service";
 import { AppConfigService } from "../config/config.service";
 import { ResponseHelper } from "../common/helpers/response.helper";
 import { ApiResponse } from "../common/interfaces/api-response.interface";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "crypto";
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -123,7 +124,7 @@ export class AuthService {
       select: ["token"],
     });
 
-    const sessionId = uuidv4(); // generate new sessionId
+    const sessionId = randomUUID(); // generate new sessionId
     user.currentSessionId = sessionId; // save in DB
     await this.userRepository.save(user);
 
@@ -240,13 +241,7 @@ export class AuthService {
   const newPayload = { sub: user.id, email: user.email, sessionId: user.currentSessionId };
   const newAccessToken = this.jwtService.sign(newPayload, {
     expiresIn: this.configService.jwtAccessExpires,
-  });//
-      
-  if (!userId) {
-        throw new UnauthorizedException("Invalid refresh token");
-      }
-
-      
+  });
 
       // Use transaction with row-level locking to prevent race conditions
       // This ensures only one refresh request can process at a time for the same refresh token

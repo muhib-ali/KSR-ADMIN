@@ -21,6 +21,7 @@ export class User extends BaseAuditColumns {
   @JoinColumn({ name: "role_id" })
   role: Role;
 
-  @Column({ type: "uuid", nullable: true })// we created acrive session column
-currentSessionId: string;
+  /** Active session ID – only one login per user at a time */
+  @Column({ type: "uuid", nullable: true })
+  currentSessionId: string;
 }
