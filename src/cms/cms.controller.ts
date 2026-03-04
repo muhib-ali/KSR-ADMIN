@@ -121,17 +121,4 @@ export class CmsController {
     await this.cmsService.remove(id, auth);
   }
 
-  @Get("home-sections")
-  @ApiOperation({
-    summary: "Get all home CMS sections (public, for customer frontend)",
-  })
-  @ApiResponse({ status: 200, description: "Sections for home page" })
-  async getHomeSections() {
-    const data = await this.cmsService.getHomeSections();
-    return {
-      success: true,
-      message: "Home sections retrieved successfully",
-      data,
-    };
-  }
 }
