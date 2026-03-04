@@ -20,4 +20,8 @@ export class User extends BaseAuditColumns {
   @ManyToOne(() => Role)
   @JoinColumn({ name: "role_id" })
   role: Role;
+
+  /** Active session ID – only one login per user at a time */
+  @Column({ type: "uuid", nullable: true })
+  currentSessionId: string;
 }

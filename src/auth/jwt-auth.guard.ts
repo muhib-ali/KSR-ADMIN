@@ -33,6 +33,16 @@ export class JwtAuthGuard implements CanActivate {
         throw new UnauthorizedException("Invalid token");
       }
 
+      // CHANGE (single-session): block requests from older sessions of same user.
+      // RESULT: auth routes (excluded from PermissionMiddleware) also force logout on other-device login.
+      if (
+        (user as any)?.currentSessionId &&
+        payload?.sessionId &&
+        (user as any).currentSessionId !== payload.sessionId
+      ) {
+        throw new UnauthorizedException("Logged in from another device");
+      }
+
       // Attach user to request
       request.user = user;
       return true;
