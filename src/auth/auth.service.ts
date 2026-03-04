@@ -21,7 +21,7 @@ import { CacheService } from "../cache/cache.service";
 import { AppConfigService } from "../config/config.service";
 import { ResponseHelper } from "../common/helpers/response.helper";
 import { ApiResponse } from "../common/interfaces/api-response.interface";
-
+import { v4 as uuidv4 } from "uuid";
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -116,8 +116,26 @@ export class AuthService {
       throw new UnauthorizedException("Invalid credentials");
     }
 
+    // CHANGE (single-session): create a new sessionId and revoke previous device sessions.
+    // RESULT: when the same user logs in elsewhere, old access/refresh tokens become invalid.
+    const oldTokens = await this.tokenRepository.find({
+      where: { userId: user.id },
+      select: ["token"],
+    });
+
+    const sessionId = uuidv4(); // generate new sessionId
+    user.currentSessionId = sessionId; // save in DB
+    await this.userRepository.save(user);
+
+    for (const t of oldTokens) {
+      if (t?.token) {
+        await this.cacheService.invalidateToken(t.token);
+      }
+    }
+    await this.tokenRepository.delete({ userId: user.id }); // delete old tokens
+
     // Generate tokens
-    const payload = { sub: user.id, email: user.email };
+    const payload = { sub: user.id, email: user.email, sessionId };
     const accessToken = this.jwtService.sign(payload, {
       expiresIn: this.configService.jwtAccessExpires,
     });
@@ -152,6 +170,8 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        // CHANGE (single-session): cache includes currentSessionId for session validation.
+        currentSessionId: user.currentSessionId,
       },
     };
     await this.cacheService.cacheTokenData(
@@ -200,10 +220,33 @@ export class AuthService {
       // Verify refresh token
       const payload = this.jwtService.verify(normalizedRefreshToken);
       const userId = String((payload as any)?.sub ?? "");
+      const sessionId = String((payload as any)?.sessionId ?? "");
 
-      if (!userId) {
+  if (!userId || !sessionId) throw new UnauthorizedException("Invalid refresh token");
+ // check user session 
+  const user = await this.userRepository.findOne({ where: { id: userId } });
+  if (!user) throw new UnauthorizedException("User not found");
+
+  if (user.currentSessionId !== sessionId) {
+    throw new UnauthorizedException("Session expired or invalid");
+  }
+  // find token in db
+   const tokenRecord = await this.tokenRepository.findOne({
+    where: { refresh_token: normalizedRefreshToken, revoked: false, userId },
+  });
+   if (!tokenRecord) throw new UnauthorizedException("Invalid refresh token");
+
+  // Generate new access token (sessionId same as before)
+  const newPayload = { sub: user.id, email: user.email, sessionId: user.currentSessionId };
+  const newAccessToken = this.jwtService.sign(newPayload, {
+    expiresIn: this.configService.jwtAccessExpires,
+  });//
+      
+  if (!userId) {
         throw new UnauthorizedException("Invalid refresh token");
       }
+
+      
 
       // Use transaction with row-level locking to prevent race conditions
       // This ensures only one refresh request can process at a time for the same refresh token
@@ -293,10 +336,10 @@ export class AuthService {
         }
 
         // Generate new access token
-        const newPayload = { sub: payload.sub, email: payload.email };
+       /* const newPayload = { sub: payload.sub, email: payload.email };
         const newAccessToken = this.jwtService.sign(newPayload, {
-          expiresIn: this.configService.jwtAccessExpires,
-        });
+          expiresIn: this.configService.jwtAccessExpires,*/
+        //}); // sessionId is kept the same in payload for security
 
         // Calculate new expiry date
         const newExpiresAt = new Date();

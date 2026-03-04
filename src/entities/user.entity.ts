@@ -20,4 +20,7 @@ export class User extends BaseAuditColumns {
   @ManyToOne(() => Role)
   @JoinColumn({ name: "role_id" })
   role: Role;
+
+  @Column({ type: "uuid", nullable: true })// we created acrive session column
+currentSessionId: string;
 }

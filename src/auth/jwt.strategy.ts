@@ -24,7 +24,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user) {
       return null;
     }
-
-    return user;
+    if (user.currentSessionId !== payload.sessionId) {
+    // Token is from old session → automatically logout
+    return null; // or throw new UnauthorizedException("Logged in from another device")
   }
+  // ---------------------------
+
+  return user;
+}
+
 }

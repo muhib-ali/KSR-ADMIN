@@ -58,6 +58,24 @@ export class PermissionMiddleware implements NestMiddleware {
       // Verify JWT token
       const decoded = this.verifyToken(token);
 
+      // CHANGE (single-session): if sessionId in JWT doesn't match DB, user logged in elsewhere.
+      // RESULT: old device/browser is forced to logout immediately.
+      const sessionUser = await this.userRepository.findOne({
+        where: { id: decoded?.sub },
+        select: ["id", "currentSessionId"],
+      });
+      if (
+        sessionUser?.currentSessionId &&
+        decoded?.sessionId &&
+        sessionUser.currentSessionId !== decoded.sessionId
+      ) {
+        //throw new UnauthorizedException("Logged in from another device");
+        throw new UnauthorizedException({
+  message: "Logged in from another device",
+  code: "SESSION_REPLACED",
+});
+      }
+
       // Validate token exists in database (not revoked/deleted)
       const isValidToken = await this.validateTokenInDatabase(token);
       if (!isValidToken) {
