@@ -25,7 +25,8 @@ export class CategoriesService {
   ) {}
 
   async create(
-    createCategoryDto: CreateCategoryDto
+    createCategoryDto: CreateCategoryDto,
+    loggedInUserId: string // Add loggedInUserId to track who created the category
   ): Promise<ApiResponse<Category>> {
     const { name, description, isActive } = createCategoryDto;
 
@@ -41,6 +42,8 @@ export class CategoriesService {
       name,
       description,
       is_active: isActive !== undefined ? isActive : true, // Default to true if not provided
+      created_by: loggedInUserId, // Track creator
+      updated_by: loggedInUserId, // Track initial updater
     });
 
     const savedCategory = await this.categoryRepository.save(category);
@@ -53,7 +56,10 @@ export class CategoriesService {
     );
   }
 
-  async update(updateCategoryDto: UpdateCategoryDto): Promise<ApiResponse<Category>> {
+  async update(
+    updateCategoryDto: UpdateCategoryDto,
+    loggedInUserId: string // Add loggedInUserId to track who updated the category
+  ): Promise<ApiResponse<Category>> {
     const { id, name, description, isActive } = updateCategoryDto;
 
     const category = await this.categoryRepository.findOne({ where: { id } });
@@ -72,6 +78,7 @@ export class CategoriesService {
     const updateData: any = {
       name,
       description,
+      updated_by: loggedInUserId, // Update the last modifier
     };
 
     // Only include isActive if it's provided

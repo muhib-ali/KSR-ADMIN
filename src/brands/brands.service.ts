@@ -23,7 +23,10 @@ export class BrandsService {
     private brandRepository: Repository<Brand>
   ) {}
 
-  async create(createBrandDto: CreateBrandDto): Promise<ApiResponse<Brand>> {
+  async create(
+    createBrandDto: CreateBrandDto,
+    loggedInUserId: string // Add loggedInUserId to track who created the brand
+  ): Promise<ApiResponse<Brand>> {
     const { name, description, isActive } = createBrandDto;
 
     const existingBrand = await this.brandRepository.findOne({
@@ -38,6 +41,8 @@ export class BrandsService {
       name,
       description,
       is_active: isActive !== undefined ? isActive : true, // Default to true if not provided
+      created_by: loggedInUserId, // Track creator
+      updated_by: loggedInUserId, // Track initial updater
     });
 
     const savedBrand = await this.brandRepository.save(brand);
@@ -50,7 +55,10 @@ export class BrandsService {
     );
   }
 
-  async update(updateBrandDto: UpdateBrandDto): Promise<ApiResponse<Brand>> {
+  async update(
+    updateBrandDto: UpdateBrandDto,
+    loggedInUserId: string // Add loggedInUserId to track who updated the brand
+  ): Promise<ApiResponse<Brand>> {
     const { id, name, description, isActive } = updateBrandDto;
 
     const brand = await this.brandRepository.findOne({ where: { id } });
@@ -69,6 +77,7 @@ export class BrandsService {
     const updateData: any = {
       name,
       description,
+      updated_by: loggedInUserId, // Update the last modifier
     };
 
     // Only include isActive if it's provided

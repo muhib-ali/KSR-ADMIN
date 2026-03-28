@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   ValidationPipe,
+  Request,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -56,8 +57,12 @@ export class TaxesController {
     },
   })
   @ApiBody({ type: CreateTaxDto })
-  async create(@Body(ValidationPipe) createTaxDto: CreateTaxDto) {
-    return this.taxesService.create(createTaxDto);
+  async create(
+    @Body(ValidationPipe) createTaxDto: CreateTaxDto,
+    @Request() req: any
+  ) {
+    // Pass user ID from request to service for 'created_by' and 'updated_by'
+    return this.taxesService.create(createTaxDto, req.user.id);
   }
 
   @Put("update")
@@ -94,8 +99,12 @@ export class TaxesController {
     },
   })
   @ApiBody({ type: UpdateTaxDto })
-  async update(@Body(ValidationPipe) updateTaxDto: UpdateTaxDto) {
-    return this.taxesService.update(updateTaxDto);
+  async update(
+    @Body(ValidationPipe) updateTaxDto: UpdateTaxDto,
+    @Request() req: any
+  ) {
+    // Pass user ID from request to service for 'updated_by'
+    return this.taxesService.update(updateTaxDto, req.user.id);
   }
 
   @Get("getById/:id")

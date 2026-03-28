@@ -24,7 +24,8 @@ export class WarehousesService {
   ) {}
 
   async create(
-    createWarehouseDto: CreateWarehouseDto
+    createWarehouseDto: CreateWarehouseDto,
+    loggedInUserId: string // Add loggedInUserId to track who created the warehouse
   ): Promise<ApiResponse<Warehouse>> {
     const { name, code, address, is_active = true } = createWarehouseDto;
 
@@ -41,6 +42,8 @@ export class WarehousesService {
       code,
       address,
       is_active,
+      created_by: loggedInUserId, // Track creator
+      updated_by: loggedInUserId, // Track initial updater
     });
 
     const savedWarehouse = await this.warehouseRepository.save(warehouse);
@@ -53,7 +56,10 @@ export class WarehousesService {
     );
   }
 
-  async update(updateWarehouseDto: UpdateWarehouseDto): Promise<ApiResponse<Warehouse>> {
+  async update(
+    updateWarehouseDto: UpdateWarehouseDto,
+    loggedInUserId: string // Add loggedInUserId to track who updated the warehouse
+  ): Promise<ApiResponse<Warehouse>> {
     const { id, name, code, address, is_active } = updateWarehouseDto;
 
     const warehouse = await this.warehouseRepository.findOne({ where: { id } });
@@ -69,11 +75,12 @@ export class WarehousesService {
       throw new BadRequestException("Warehouse with this code already exists");
     }
 
-    const updateData: Partial<Omit<UpdateWarehouseDto, "id">> = {
+    const updateData: any = {
       name,
       code,
       address,
       is_active,
+      updated_by: loggedInUserId, // Update the last modifier
     };
 
     await this.warehouseRepository.update(id, updateData);

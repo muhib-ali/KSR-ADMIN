@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   ValidationPipe,
+  Request,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -43,8 +44,9 @@ export class SubcategoriesController {
   })
   @ApiResponse({ status: 400, description: "Bad Request" })
   @ApiBody({ type: CreateSubcategoryDto })
-  async create(@Body(ValidationPipe) dto: CreateSubcategoryDto) {
-    return this.subcategoriesService.create(dto);
+  async create(@Body(ValidationPipe) dto: CreateSubcategoryDto, @Request() req: any) {
+    // Pass user ID from request to service for 'created_by' and 'updated_by'
+    return this.subcategoriesService.create(dto, req.user.id);
   }
 
   @Put("update")
@@ -56,8 +58,9 @@ export class SubcategoriesController {
   })
   @ApiResponse({ status: 404, description: "Subcategory not found" })
   @ApiBody({ type: UpdateSubcategoryDto })
-  async update(@Body(ValidationPipe) dto: UpdateSubcategoryDto) {
-    return this.subcategoriesService.update(dto);
+  async update(@Body(ValidationPipe) dto: UpdateSubcategoryDto, @Request() req: any) {
+    // Pass user ID from request to service for 'updated_by'
+    return this.subcategoriesService.update(dto, req.user.id);
   }
 
   @Get("getById/:id")

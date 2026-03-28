@@ -23,7 +23,10 @@ export class TaxesService {
     private taxRepository: Repository<Tax>
   ) {}
 
-  async create(createTaxDto: CreateTaxDto): Promise<ApiResponse<Tax>> {
+  async create(
+    createTaxDto: CreateTaxDto,
+    loggedInUserId: string // Add loggedInUserId to track who created the tax
+  ): Promise<ApiResponse<Tax>> {
     const { title, rate, is_active } = createTaxDto;
 
     const existingTax = await this.taxRepository.findOne({
@@ -36,8 +39,10 @@ export class TaxesService {
 
     const tax = this.taxRepository.create({
       title,
-      rate,
-      is_active,
+      rate, // Assuming 'rate' is the correct field name, not 'percentage' as in the instruction's typo
+      is_active: is_active !== undefined ? is_active : true, // Use is_active from DTO, with default
+      created_by: loggedInUserId, // Track creator
+      updated_by: loggedInUserId, // Track initial updater
     });
 
     const savedTax = await this.taxRepository.save(tax);
@@ -50,7 +55,10 @@ export class TaxesService {
     );
   }
 
-  async update(updateTaxDto: UpdateTaxDto): Promise<ApiResponse<Tax>> {
+  async update(
+    updateTaxDto: UpdateTaxDto,
+    loggedInUserId: string // Add loggedInUserId to track who updated the tax
+  ): Promise<ApiResponse<Tax>> {
     const { id, title, rate, is_active } = updateTaxDto;
 
     const tax = await this.taxRepository.findOne({ where: { id } });
@@ -66,10 +74,11 @@ export class TaxesService {
       throw new BadRequestException("Tax with this title already exists");
     }
 
-    const updateData: Partial<Omit<UpdateTaxDto, "id">> = {
+    const updateData: any = {
       title,
       rate,
       is_active,
+      updated_by: loggedInUserId, // Update the last modifier
     };
 
     await this.taxRepository.update(id, updateData);

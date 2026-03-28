@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   ValidationPipe,
+  Request,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -56,8 +57,12 @@ export class CategoriesController {
     },
   })
   @ApiBody({ type: CreateCategoryDto })
-  async create(@Body(ValidationPipe) createCategoryDto: CreateCategoryDto) {
-    return this.categoriesService.create(createCategoryDto);
+  async create(
+    @Body(ValidationPipe) createCategoryDto: CreateCategoryDto,
+    @Request() req: any
+  ) {
+    // Pass user ID from request to service for 'created_by' and 'updated_by'
+    return this.categoriesService.create(createCategoryDto, req.user.id);
   }
 
   @Put("update")
@@ -94,8 +99,12 @@ export class CategoriesController {
     },
   })
   @ApiBody({ type: UpdateCategoryDto })
-  async update(@Body(ValidationPipe) updateCategoryDto: UpdateCategoryDto) {
-    return this.categoriesService.update(updateCategoryDto);
+  async update(
+    @Body(ValidationPipe) updateCategoryDto: UpdateCategoryDto,
+    @Request() req: any
+  ) {
+    // Pass user ID from request to service for 'updated_by'
+    return this.categoriesService.update(updateCategoryDto, req.user.id);
   }
 
   @Get("getById/:id")

@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   ValidationPipe,
+  Request,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -57,9 +58,11 @@ export class PromoCodesController {
   })
   @ApiBody({ type: CreatePromoCodeDto })
   async create(
-    @Body(ValidationPipe) createPromoCodeDto: CreatePromoCodeDto
+    @Body(ValidationPipe) createPromoCodeDto: CreatePromoCodeDto,
+    @Request() req: any
   ): Promise<PromoCodeResponseDto> {
-    return await this.promoCodesService.create(createPromoCodeDto);
+    // Pass user ID from request to service for 'created_by' and 'updated_by'
+    return await this.promoCodesService.create(createPromoCodeDto, req.user.id);
   }
 
   @Get("getAll")
@@ -128,10 +131,12 @@ export class PromoCodesController {
   })
   @ApiBody({ type: UpdatePromoCodeDto })
   async update(
-    @Body(ValidationPipe) updatePromoCodeDto: UpdatePromoCodeDto
+    @Body(ValidationPipe) updatePromoCodeDto: UpdatePromoCodeDto,
+    @Request() req: any
   ): Promise<PromoCodeResponseDto> {
     const { id, ...updateData } = updatePromoCodeDto;
-    return await this.promoCodesService.update(id, updateData);
+    // Pass user ID from request to service for 'updated_by'
+    return await this.promoCodesService.update(id, updateData, req.user.id);
   }
 
   @Delete("delete")

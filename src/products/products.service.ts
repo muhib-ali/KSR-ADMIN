@@ -1131,7 +1131,7 @@ export class ProductsService {
     return Number.isFinite(n) ? n : 0;
   }
 
-  private async ensureCategoryByName(name: string): Promise<Category> {
+  private async ensureCategoryByName(name: string, loggedInUserId: string): Promise<Category> {
     const trimmed = this.normalizeName(name);
     const existing = await this.categoryRepository
       .createQueryBuilder("c")
@@ -1143,6 +1143,8 @@ export class ProductsService {
       return await this.categoryRepository.save({
         name: trimmed,
         description: null as any,
+        created_by: loggedInUserId, // Track creator
+        updated_by: loggedInUserId, // Track initial updater
       } as any);
     } catch {
       const again = await this.categoryRepository
@@ -1154,7 +1156,7 @@ export class ProductsService {
     }
   }
 
-  private async ensureBrandByName(name: string): Promise<Brand> {
+  private async ensureBrandByName(name: string, loggedInUserId: string): Promise<Brand> {
     const trimmed = this.normalizeName(name);
     const existing = await this.brandRepository
       .createQueryBuilder("b")
@@ -1166,6 +1168,8 @@ export class ProductsService {
       return await this.brandRepository.save({
         name: trimmed,
         description: null as any,
+        created_by: loggedInUserId, // Track creator
+        updated_by: loggedInUserId, // Track initial updater
       } as any);
     } catch {
       const again = await this.brandRepository
@@ -1177,7 +1181,7 @@ export class ProductsService {
     }
   }
 
-  private async ensureSupplierByName(name: string): Promise<Supplier> {
+  private async ensureSupplierByName(name: string, loggedInUserId: string): Promise<Supplier> {
     const trimmed = this.normalizeName(name);
     const existing = await this.supplierRepository
       .createQueryBuilder("s")
@@ -1192,6 +1196,8 @@ export class ProductsService {
         phone: null as any,
         address: null as any,
         is_active: true,
+        created_by: loggedInUserId, // Track creator
+        updated_by: loggedInUserId, // Track initial updater
       } as any);
     } catch {
       const again = await this.supplierRepository
@@ -1206,7 +1212,8 @@ export class ProductsService {
   /** Find subcategory by name under category; if not found, create and return. */
   private async ensureSubcategoryByNameAndCategory(
     categoryId: string,
-    subcategoryName: string
+    subcategoryName: string,
+    loggedInUserId: string // Audit tracking
   ): Promise<Subcategory> {
     const trimmed = this.normalizeName(subcategoryName);
     const existing = await this.subcategoryRepository
@@ -1221,6 +1228,8 @@ export class ProductsService {
         name: trimmed,
         description: null as any,
         cat_id: categoryId,
+        created_by: loggedInUserId, // Track creator
+        updated_by: loggedInUserId, // Track initial updater
       } as any);
     } catch {
       const again = await this.subcategoryRepository
@@ -1237,6 +1246,7 @@ export class ProductsService {
 
   async bulkUploadFromExcel(
     file: { buffer: Buffer; originalname: string; mimetype: string },
+    loggedInUserId: string, // Audit tracking
     authorizationHeader?: string
   ): Promise<ApiResponse<any>> {
     const expectedHeadersNew = [
@@ -1650,14 +1660,14 @@ export class ProductsService {
     for (const key of uniqueCategoryKeys) {
       const original = validRows.find((r) => this.normalizeNameKey(r.category) === key)?.category;
       if (!original) continue;
-      const c = await this.ensureCategoryByName(original);
+      const c = await this.ensureCategoryByName(original, loggedInUserId);
       categoryMap.set(key, c);
     }
 
     for (const key of uniqueBrandKeys) {
       const original = validRows.find((r) => this.normalizeNameKey(r.brand) === key)?.brand;
       if (!original) continue;
-      const b = await this.ensureBrandByName(original);
+      const b = await this.ensureBrandByName(original, loggedInUserId);
       brandMap.set(key, b);
     }
 
@@ -1665,15 +1675,15 @@ export class ProductsService {
     const uniqueSupplierKeys = Array.from(
       new Set(
         validRows
-          .map((r) => this.normalizeNameKey(r.supplier))
+          .map((r) => this.normalizeNameKey(r.supplier)) // Use r.supplier for mapping
           .filter(Boolean)
       )
     );
     const supplierMap = new Map<string, Supplier>();
     for (const key of uniqueSupplierKeys) {
-      const original = validRows.find((r) => this.normalizeNameKey(r.supplier) === key)?.supplier;
+      const original = validRows.find((r) => this.normalizeNameKey(r.supplier) === key)?.supplier; // Use r.supplier for finding original
       if (!original) continue;
-      const s = await this.ensureSupplierByName(original);
+      const s = await this.ensureSupplierByName(original, loggedInUserId); // Pass loggedInUserId
       supplierMap.set(key, s);
     }
 
@@ -1735,7 +1745,8 @@ export class ProductsService {
 
     const saveVariantsCvgBulkImagesForRow = async (
       productId: string,
-      r: typeof validRows[0]
+      r: typeof validRows[0],
+      loggedInUserId: string // Audit tracking
     ) => {
       const variantsToCreate: Array<{ vtype_id: string; value: string }> = [];
       if (r.size && sizeVariantType) {
@@ -1756,6 +1767,8 @@ export class ProductsService {
         if (!customVariantType) {
           customVariantType = await this.variantTypeRepository.save({
             name: type_name,
+            created_by: loggedInUserId, // Track creator
+            updated_by: loggedInUserId, // Track initial updater
           } as any);
         }
         if (customVariantType) {
@@ -1771,6 +1784,8 @@ export class ProductsService {
             vtype_id: v.vtype_id,
             value: v.value,
             product_id: productId,
+            created_by: loggedInUserId, // Track creator
+            updated_by: loggedInUserId, // Track initial updater
           })
         );
         await this.variantRepository.save(variantEntities);
@@ -1780,7 +1795,12 @@ export class ProductsService {
       if (this.parseBooleanCell(r.wholesale) && wholesaleCvg) cvgIds.push(wholesaleCvg.id);
       if (cvgIds.length > 0) {
         const cvgProductEntities = cvgIds.map((cvg_id) =>
-          this.cvgProductRepository.create({ cvg_id, product_id: productId })
+          this.cvgProductRepository.create({
+            cvg_id,
+            product_id: productId,
+            created_by: loggedInUserId, // Track creator
+            updated_by: loggedInUserId, // Track initial updater
+          })
         );
         await this.cvgProductRepository.save(cvgProductEntities);
       }
@@ -1795,6 +1815,8 @@ export class ProductsService {
             quantity: r.bpQuantity,
             price_per_product: r.bpPricePerProduct,
             product_id: productId,
+            created_by: loggedInUserId, // Track creator
+            updated_by: loggedInUserId, // Track initial updater
           })
         );
       }
@@ -1806,6 +1828,8 @@ export class ProductsService {
             url,
             file_name: this.getProductImageFileName(url),
             sort_order: idx + 2,
+            created_by: loggedInUserId, // Track creator
+            updated_by: loggedInUserId, // Track initial updater
           })
         );
         await this.productImageRepository.save(imgs);
@@ -1859,7 +1883,7 @@ export class ProductsService {
           // Resolve subcategory: if name provided, ensure it exists under this category (create if missing)
           let subcategoryId: string | null = null;
           if (row.subcategory) {
-            const sub = await this.ensureSubcategoryByNameAndCategory(c.id, row.subcategory);
+            const sub = await this.ensureSubcategoryByNameAndCategory(c.id, row.subcategory, loggedInUserId);
             subcategoryId = sub.id;
           }
 
@@ -1891,13 +1915,14 @@ export class ProductsService {
               supplier_id: supplierId || null,
               warehouse_id: warehouseId || null,
               total_price: row.sellingPrice,
+              updated_by: loggedInUserId, // Audit tracking
             };
             await this.productRepository.update(existingProduct.id, updateData);
             await this.variantRepository.delete({ product_id: existingProduct.id });
             await this.cvgProductRepository.delete({ product_id: existingProduct.id });
             await this.bulkPriceRepository.delete({ product_id: existingProduct.id });
             await this.productImageRepository.delete({ product_id: existingProduct.id });
-            await saveVariantsCvgBulkImagesForRow(String(existingProduct.id), row);
+            await saveVariantsCvgBulkImagesForRow(String(existingProduct.id), row, loggedInUserId);
             updatedCount += 1;
             updatedSkus.push((existingProduct as any).sku ?? existingProduct.id);
             try {
@@ -1997,6 +2022,8 @@ export class ProductsService {
               supplier_id: supplierId || null,
               warehouse_id: warehouseId || null,
               total_price: row.sellingPrice,
+              created_by: loggedInUserId, // Audit tracking
+              updated_by: loggedInUserId, // Audit tracking
             };
 
             const res = await this.productRepository
@@ -2020,7 +2047,7 @@ export class ProductsService {
 
             createdCount += 1;
             createdSkus.push(sku);
-            await saveVariantsCvgBulkImagesForRow(String(insertedId), row);
+            await saveVariantsCvgBulkImagesForRow(String(insertedId), row, loggedInUserId);
             try {
               const bulkVariants: { type_name: string; value: string }[] = [];
               if (row.size) bulkVariants.push({ type_name: "size", value: row.size });
@@ -2110,6 +2137,7 @@ export class ProductsService {
 
   async create(
     createProductDto: CreateProductDto,
+    loggedInUserId: string, // Tracking user for created_by and updated_by
     fileOrAuthorizationHeader?:
       | { buffer: Buffer; mimetype: string; originalname: string }
       | string,
@@ -2216,6 +2244,8 @@ export class ProductsService {
       warehouse_id,
       total_price,
       ...(typeof is_active === "boolean" ? { is_active } : {}),
+      created_by: loggedInUserId, // Audit tracking
+      updated_by: loggedInUserId, // Audit tracking
     });
 
     const savedProduct = await this.productRepository.save(product);
@@ -2236,6 +2266,8 @@ export class ProductsService {
           vtype_id: variant.vtype_id,
           value: variant.value,
           product_id: savedProduct.id,
+          created_by: loggedInUserId, // Track creator
+          updated_by: loggedInUserId, // Track initial updater
         })
       );
 
@@ -2256,6 +2288,8 @@ export class ProductsService {
         this.cvgProductRepository.create({
           cvg_id,
           product_id: savedProduct.id,
+          created_by: loggedInUserId, // Track creator
+          updated_by: loggedInUserId, // Track initial updater
         })
       );
 
@@ -2270,6 +2304,8 @@ export class ProductsService {
           quantity: bulkPrice.quantity,
           price_per_product: bulkPrice.price_per_product,
           product_id: savedProduct.id,
+          created_by: loggedInUserId, // Track creator
+          updated_by: loggedInUserId, // Track initial updater
         })
       );
 
@@ -2287,6 +2323,8 @@ export class ProductsService {
           url: trimmed,
           file_name: fileName,
           sort_order: idx + 1,
+          created_by: loggedInUserId, // Track creator
+          updated_by: loggedInUserId, // Track initial updater
         });
       });
       await this.productImageRepository.save(imagesToSave);
@@ -2326,6 +2364,7 @@ export class ProductsService {
 
   async update(
     updateProductDto: UpdateProductDto,
+    loggedInUserId: string, // Tracking user for updated_by
     fileOrAuthorizationHeader?:
       | { buffer: Buffer; mimetype: string; originalname: string }
       | string,
@@ -2482,6 +2521,9 @@ export class ProductsService {
       // If product_video_url is undefined, don't include it in updateData (preserve existing)
     }
 
+    // Set updated_by field for audit tracking
+    updateData.updated_by = loggedInUserId;
+
     await this.productRepository.update(id, updateData);
 
     // Handle variants update
@@ -2505,6 +2547,8 @@ export class ProductsService {
             vtype_id: variant.vtype_id,
             value: variant.value,
             product_id: id,
+            created_by: loggedInUserId, // Track creator
+            updated_by: loggedInUserId, // Track initial updater
           })
         );
 
@@ -2531,6 +2575,8 @@ export class ProductsService {
           this.cvgProductRepository.create({
             cvg_id,
             product_id: id,
+            created_by: loggedInUserId, // Track creator
+            updated_by: loggedInUserId, // Track initial updater
           })
         );
 
@@ -2551,6 +2597,8 @@ export class ProductsService {
             quantity: bulkPrice.quantity,
             price_per_product: bulkPrice.price_per_product,
             product_id: id,
+            created_by: loggedInUserId, // Track creator
+            updated_by: loggedInUserId, // Track initial updater
           })
         );
 
@@ -2582,6 +2630,8 @@ export class ProductsService {
             url: trimmed,
             file_name: this.getExternalImageFileName(trimmed, idx + 1),
             sort_order: maxSort + idx + 1,
+            created_by: loggedInUserId, // Track creator
+            updated_by: loggedInUserId, // Track initial updater
           });
         });
         await this.productImageRepository.save(imagesToSave);

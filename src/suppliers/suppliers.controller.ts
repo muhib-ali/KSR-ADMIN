@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   ValidationPipe,
+  Request,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -56,8 +57,12 @@ export class SuppliersController {
     },
   })
   @ApiBody({ type: CreateSupplierDto })
-  async create(@Body(ValidationPipe) createSupplierDto: CreateSupplierDto) {
-    return this.suppliersService.create(createSupplierDto);
+  async create(
+    @Body(ValidationPipe) createSupplierDto: CreateSupplierDto,
+    @Request() req: any
+  ) {
+    // Pass user ID from request to service for 'created_by' and 'updated_by'
+    return this.suppliersService.create(createSupplierDto, req.user.id);
   }
 
   @Put("update")
@@ -94,8 +99,12 @@ export class SuppliersController {
     },
   })
   @ApiBody({ type: UpdateSupplierDto })
-  async update(@Body(ValidationPipe) updateSupplierDto: UpdateSupplierDto) {
-    return this.suppliersService.update(updateSupplierDto);
+  async update(
+    @Body(ValidationPipe) updateSupplierDto: UpdateSupplierDto,
+    @Request() req: any
+  ) {
+    // Pass user ID from request to service for 'updated_by'
+    return this.suppliersService.update(updateSupplierDto, req.user.id);
   }
 
   @Get("getById/:id")

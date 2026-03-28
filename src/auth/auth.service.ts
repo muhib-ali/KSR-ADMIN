@@ -516,7 +516,7 @@ export class AuthService {
           userId,
           revoked: false,
         },
-        select: ["id", "expires_at", "revoked", "userId"],
+        //select: ["id", "expires_at", "revoked", "userId"],
         relations: ["user", "user.role"],
       });
 

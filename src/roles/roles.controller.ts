@@ -58,8 +58,12 @@ export class RolesController {
   })
   @ApiResponse({ status: 401, description: "Unauthorized" })
   @ApiBody({ type: CreateRoleDto })
-  async create(@Body(ValidationPipe) createRoleDto: CreateRoleDto) {
-    return this.rolesService.create(createRoleDto);
+  async create(
+    @Body(ValidationPipe) createRoleDto: CreateRoleDto,
+    @Request() req: any
+  ) {
+    // Pass user ID from request to service for 'created_by' and 'updated_by'
+    return this.rolesService.create(createRoleDto, req.user.id);
   }
 
   @Put("update")
@@ -72,11 +76,16 @@ export class RolesController {
   @ApiResponse({ status: 404, description: "Role not found" })
   @ApiResponse({ status: 401, description: "Unauthorized" })
   @ApiBody({ type: UpdateRoleDto })
-  async update(@Body(ValidationPipe) updateRoleDto: UpdateRoleDto) {
+  async update(
+    @Body(ValidationPipe) updateRoleDto: UpdateRoleDto,
+    @Request() req: any
+  ) {
     const { id, ...updateData } = updateRoleDto;
+    // Pass user ID from request to service for 'updated_by'
     return this.rolesService.update(
       id,
-      updateData as Partial<Omit<UpdateRoleDto, "id">>
+      updateData as Partial<Omit<UpdateRoleDto, "id">>,
+      req.user.id
     );
   }
 

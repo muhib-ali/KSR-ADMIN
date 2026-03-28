@@ -24,7 +24,8 @@ export class SuppliersService {
   ) {}
 
   async create(
-    createSupplierDto: CreateSupplierDto
+    createSupplierDto: CreateSupplierDto,
+    loggedInUserId: string // Add loggedInUserId to track who created the supplier
   ): Promise<ApiResponse<Supplier>> {
     const { supplier_name, email, phone, address, is_active } = createSupplierDto;
 
@@ -42,6 +43,8 @@ export class SuppliersService {
       phone,
       address,
       is_active,
+      created_by: loggedInUserId, // Track creator
+      updated_by: loggedInUserId, // Track initial updater
     });
 
     const savedSupplier = await this.supplierRepository.save(supplier);
@@ -54,7 +57,10 @@ export class SuppliersService {
     );
   }
 
-  async update(updateSupplierDto: UpdateSupplierDto): Promise<ApiResponse<Supplier>> {
+  async update(
+    updateSupplierDto: UpdateSupplierDto,
+    loggedInUserId: string // Add loggedInUserId to track who updated the supplier
+  ): Promise<ApiResponse<Supplier>> {
     const { id, supplier_name, email, phone, address, is_active } = updateSupplierDto;
 
     const supplier = await this.supplierRepository.findOne({ where: { id } });
@@ -70,12 +76,14 @@ export class SuppliersService {
       throw new BadRequestException("Supplier with this name already exists");
     }
 
-    const updateData: Partial<Omit<UpdateSupplierDto, "id">> = {
+    const updateData: any = {
+      id,
       supplier_name,
       email,
       phone,
       address,
       is_active,
+      updated_by: loggedInUserId, // Update the last modifier
     };
 
     await this.supplierRepository.update(id, updateData);

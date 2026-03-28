@@ -50,7 +50,10 @@ export class RolesService {
       .join("");
   }
 
-  async create(createRoleDto: CreateRoleDto): Promise<ApiResponse<Role>> {
+  async create(
+    createRoleDto: CreateRoleDto,
+    loggedInUserId: string // Add loggedInUserId to track who created the role
+  ): Promise<ApiResponse<Role>> {
     const { title, role_type_id } = createRoleDto;
     const slug = this.generateSlug(title);
 
@@ -80,6 +83,8 @@ export class RolesService {
       slug,
       role_type_id: finalRoleTypeId,
       is_active: true,
+      created_by: loggedInUserId, // Track creator
+      updated_by: loggedInUserId, // Track initial updater
     });
 
     const savedRole = await this.roleRepository.save(role);
@@ -94,7 +99,8 @@ export class RolesService {
 
   async update(
     id: string,
-    updateData: Partial<Omit<UpdateRoleDto, "id">>
+    updateData: Partial<Omit<UpdateRoleDto, "id">>,
+    loggedInUserId: string // Add loggedInUserId to track who updated the role
   ): Promise<ApiResponse<Role>> {
     const role = await this.roleRepository.findOne({ where: { id } });
 
@@ -122,6 +128,8 @@ export class RolesService {
     if (updateData.is_active !== undefined) {
       role.is_active = updateData.is_active;
     }
+
+    role.updated_by = loggedInUserId; // Update the last modifier
 
     const updatedRole = await this.roleRepository.save(role);
 

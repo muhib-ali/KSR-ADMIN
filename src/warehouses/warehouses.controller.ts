@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   ValidationPipe,
+  Request,
 } from "@nestjs/common";
 import {
   ApiTags,
@@ -54,8 +55,12 @@ export class WarehousesController {
     },
   })
   @ApiBody({ type: CreateWarehouseDto })
-  async create(@Body(ValidationPipe) createWarehouseDto: CreateWarehouseDto) {
-    return this.warehousesService.create(createWarehouseDto);
+  async create(
+    @Body(ValidationPipe) createWarehouseDto: CreateWarehouseDto,
+    @Request() req: any
+  ) {
+    // Pass user ID from request to service for 'created_by' and 'updated_by'
+    return this.warehousesService.create(createWarehouseDto, req.user.id);
   }
 
   @Put("update")
@@ -92,8 +97,12 @@ export class WarehousesController {
     },
   })
   @ApiBody({ type: UpdateWarehouseDto })
-  async update(@Body(ValidationPipe) updateWarehouseDto: UpdateWarehouseDto) {
-    return this.warehousesService.update(updateWarehouseDto);
+  async update(
+    @Body(ValidationPipe) updateWarehouseDto: UpdateWarehouseDto,
+    @Request() req: any
+  ) {
+    // Pass user ID from request to service for 'updated_by'
+    return this.warehousesService.update(updateWarehouseDto, req.user.id);
   }
 
   @Get("getById/:id")

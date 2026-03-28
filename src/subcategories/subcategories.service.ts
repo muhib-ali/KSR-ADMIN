@@ -27,7 +27,8 @@ export class SubcategoriesService {
   ) {}
 
   async create(
-    createSubcategoryDto: CreateSubcategoryDto
+    createSubcategoryDto: CreateSubcategoryDto,
+    loggedInUserId: string // Add loggedInUserId to track who created the subcategory
   ): Promise<ApiResponse<Subcategory>> {
     const { name, description, cat_id, isActive } = createSubcategoryDto;
 
@@ -52,6 +53,8 @@ export class SubcategoriesService {
       description,
       cat_id,
       is_active: isActive !== undefined ? isActive : true,
+      created_by: loggedInUserId, // Track creator
+      updated_by: loggedInUserId, // Track initial updater
     });
 
     const saved = await this.subcategoryRepository.save(subcategory);
@@ -64,7 +67,8 @@ export class SubcategoriesService {
   }
 
   async update(
-    updateSubcategoryDto: UpdateSubcategoryDto
+    updateSubcategoryDto: UpdateSubcategoryDto,
+    loggedInUserId: string // Add loggedInUserId to track who updated the subcategory
   ): Promise<ApiResponse<Subcategory>> {
     const { id, name, description, cat_id, isActive } = updateSubcategoryDto;
 
@@ -91,7 +95,7 @@ export class SubcategoriesService {
       );
     }
 
-    const updateData: any = { name, description, cat_id };
+    const updateData: any = { name, description, cat_id, updated_by: loggedInUserId };
     if (isActive !== undefined) updateData.is_active = isActive;
     await this.subcategoryRepository.update(id, updateData);
 

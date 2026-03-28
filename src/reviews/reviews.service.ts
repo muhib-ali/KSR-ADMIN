@@ -190,6 +190,7 @@ export class ReviewsService {
     review.status = status;
     review.reviewed_by = adminUser.fullname || adminUser.email;
     review.reviewed_at = new Date();
+    review.updated_by = adminUser.id; // Track who performed the update
 
     if (status === ReviewStatus.REJECTED && !rejection_reason) {
       throw new BadRequestException('Rejection reason is required when rejecting a review');
@@ -242,6 +243,7 @@ export class ReviewsService {
       review.status = status;
       review.reviewed_by = adminUser.fullname || adminUser.email;
       review.reviewed_at = new Date();
+      review.updated_by = adminUser.id; // Track who performed the update
       
       if (rejection_reason) {
         review.rejection_reason = rejection_reason;

@@ -13,13 +13,14 @@ import {
   UploadedFile,
   UploadedFiles,
   UseInterceptors,
+  Request,
 } from "@nestjs/common";
 import {
   FileInterceptor,
   AnyFilesInterceptor,
 } from "@nestjs/platform-express";
 import { memoryStorage } from "multer";
-import { Request } from "express";
+import { Request as ExpressRequest } from "express";
 import {
   ApiTags,
   ApiOperation,
@@ -109,7 +110,7 @@ export class ProductsController {
     })
   )
   async uploadImages(
-    @Req() req: Request,
+    @Req() req: any, // Use 'any' to avoid Header typing issues
     @Param("productId") productId: string,
     @UploadedFiles() files: UploadedImageFile[]
   ) {
@@ -157,7 +158,7 @@ export class ProductsController {
     })
   )
   async uploadFeaturedImage(
-    @Req() req: Request,
+    @Req() req: any, // Use 'any' to avoid Header typing issues
     @Param("productId") productId: string,
     @UploadedFile() file: UploadedImageFile
   ) {
@@ -207,7 +208,7 @@ export class ProductsController {
     })
   )
   async uploadVideo(
-    @Req() req: Request,
+    @Req() req: any, // Use 'any' to avoid Header typing issues
     @Param("productId") productId: string,
     @UploadedFile() file: UploadedVideoFile
   ) {
@@ -227,7 +228,7 @@ export class ProductsController {
   @ApiParam({ name: "productId", description: "Product ID", type: String })
   @ApiParam({ name: "imageId", description: "Product image ID", type: String })
   async deleteImage(
-    @Req() req: Request,
+    @Req() req: any, // Use 'any' to avoid Header typing issues
     @Param("productId") productId: string,
     @Param("imageId") imageId: string
   ) {
@@ -296,12 +297,18 @@ export class ProductsController {
       },
     })
   )
-  async bulkUpload(@Req() req: Request, @UploadedFile() file: UploadedExcelFile) {
+  async bulkUpload(
+    @Request() req: any, // Access NestJS Request for user ID
+    @UploadedFile() file: UploadedExcelFile
+  ) {
     if (!file) {
       throw new BadRequestException("Excel file is required");
     }
-
-    return this.productsService.bulkUploadFromExcel(file, req.headers.authorization);
+    return this.productsService.bulkUploadFromExcel(
+      file,
+      req.user.id, // Audit tracking
+      req.headers.authorization
+    );
   }
 
   @Post("create")
@@ -324,8 +331,16 @@ export class ProductsController {
       },
     },
   })
-  async create(@Req() req: Request, @Body(ValidationPipe) createProductDto: CreateProductDto) {
-    return this.productsService.create(createProductDto, req.headers.authorization);
+  async create(
+    @Request() req: any, // Access NestJS Request for user ID
+    @Body(ValidationPipe) createProductDto: CreateProductDto
+  ) {
+    // Pass user ID to service for audit tracking (created_by/updated_by)
+    return this.productsService.create(
+      createProductDto,
+      req.user.id,
+      req.headers.authorization
+    );
   }
 
   @Put("update")
@@ -348,8 +363,16 @@ export class ProductsController {
       },
     },
   })
-  async update(@Req() req: Request, @Body(ValidationPipe) updateProductDto: UpdateProductDto) {
-    return this.productsService.update(updateProductDto, req.headers.authorization);
+  async update(
+    @Request() req: any, // Access NestJS Request for user ID
+    @Body(ValidationPipe) updateProductDto: UpdateProductDto
+  ) {
+    // Pass user ID to service for audit tracking (updated_by)
+    return this.productsService.update(
+      updateProductDto,
+      req.user.id,
+      req.headers.authorization
+    );
   }
 
   @Get("getById/:id")
@@ -446,7 +469,7 @@ export class ProductsController {
   })
   @ApiBody({ type: DeleteProductDto })
   async delete(
-    @Req() req: Request,
+    @Req() req: any, // Use 'any' to avoid Header typing issues
     @Body(ValidationPipe) deleteProductDto: DeleteProductDto
   ) {
     return this.productsService.delete(deleteProductDto, req.headers.authorization);

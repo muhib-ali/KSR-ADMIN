@@ -23,7 +23,7 @@ export class PromoCodesService {
     private promoCodeRepository: Repository<PromoCode>
   ) {}
 
-  async create(createPromoCodeDto: CreatePromoCodeDto): Promise<ApiResponse<PromoCode>> {
+  async create(createPromoCodeDto: CreatePromoCodeDto, loggedInUserId: string): Promise<ApiResponse<PromoCode>> {
     const { code, value, usageLimit, expiresAt, isActive } = createPromoCodeDto;
 
     const existingPromoCode = await this.promoCodeRepository.findOne({
@@ -41,6 +41,8 @@ export class PromoCodesService {
       expires_at: expiresAt,
       is_active: isActive !== undefined ? isActive : true,
       usage_count: 0,
+      created_by: loggedInUserId, // Track creator
+      updated_by: loggedInUserId, // Track initial updater
     });
 
     const savedPromoCode = await this.promoCodeRepository.save(promoCode);
@@ -111,7 +113,8 @@ export class PromoCodesService {
 
   async update(
     id: string,
-    updatePromoCodeDto: Partial<UpdatePromoCodeDto>
+    updatePromoCodeDto: Partial<UpdatePromoCodeDto>,
+    loggedInUserId: string // Add loggedInUserId to track who updated the promo code
   ): Promise<ApiResponse<PromoCode>> {
     const promoCode = await this.promoCodeRepository.findOne({
       where: { id },
@@ -152,6 +155,8 @@ export class PromoCodesService {
     if (updateData.code) {
       updateData.code = updateData.code.toUpperCase();
     }
+
+    updateData.updated_by = loggedInUserId; // Update the last modifier
 
     // Remove undefined values to prevent empty criteria error
     Object.keys(updateData).forEach(key => {

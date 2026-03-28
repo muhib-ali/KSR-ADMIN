@@ -23,7 +23,10 @@ export class VariantTypesService {
     private variantRepository: Repository<Variant>
   ) {}
 
-  async create(createVariantTypeDto: CreateVariantTypeDto): Promise<ApiResponse<VariantType>> {
+  async create(
+    createVariantTypeDto: CreateVariantTypeDto,
+    loggedInUserId: string // Add loggedInUserId to track who created the variant type
+  ): Promise<ApiResponse<VariantType>> {
     const { name, is_active } = createVariantTypeDto;
 
     // Check if variant type name already exists
@@ -38,6 +41,8 @@ export class VariantTypesService {
     const variantType = this.variantTypeRepository.create({
       name: name.trim(),
       ...(typeof is_active === "boolean" ? { is_active } : {}),
+      created_by: loggedInUserId, // Track creator
+      updated_by: loggedInUserId, // Track initial updater
     });
 
     const savedVariantType = await this.variantTypeRepository.save(variantType);
@@ -50,7 +55,10 @@ export class VariantTypesService {
     );
   }
 
-  async update(updateVariantTypeDto: UpdateVariantTypeDto): Promise<ApiResponse<VariantType>> {
+  async update(
+    updateVariantTypeDto: UpdateVariantTypeDto,
+    loggedInUserId: string // Add loggedInUserId to track who updated the variant type
+  ): Promise<ApiResponse<VariantType>> {
     const { id, name, is_active } = updateVariantTypeDto;
 
     const variantType = await this.variantTypeRepository.findOne({ where: { id } });
@@ -72,6 +80,7 @@ export class VariantTypesService {
     const updateData: any = {};
     if (name !== undefined) updateData.name = name.trim();
     if (typeof is_active === "boolean") updateData.is_active = is_active;
+    updateData.updated_by = loggedInUserId; // Update the last modifier
 
     await this.variantTypeRepository.update(id, updateData);
 
