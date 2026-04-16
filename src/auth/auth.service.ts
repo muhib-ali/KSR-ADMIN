@@ -22,6 +22,7 @@ import { AppConfigService } from "../config/config.service";
 import { ResponseHelper } from "../common/helpers/response.helper";
 import { ApiResponse } from "../common/interfaces/api-response.interface";
 import { randomUUID } from "crypto";
+import { AuditLogsService } from "../audit-logs/audit-logs.service";
 
 @Injectable()
 export class AuthService {
@@ -42,7 +43,8 @@ export class AuthService {
     private cacheService: CacheService,
     private configService: AppConfigService,
     @InjectDataSource()
-    private dataSource: DataSource
+    private dataSource: DataSource,
+    private auditLogsService: AuditLogsService // Added for activity tracking
   ) {}
 
   private async getModulesWithPermissions(roleId: string) {
@@ -98,7 +100,7 @@ export class AuthService {
     return Array.from(moduleMap.values());
   }
 
-  async login(loginDto: LoginDto): Promise<ApiResponse<any>> {
+  async login(loginDto: LoginDto, req: any): Promise<ApiResponse<any>> {
     const { email, password } = loginDto;
 
     // Find user by email
@@ -187,6 +189,16 @@ export class AuthService {
     );
 
     this.logger.log(`User logged in successfully: ${user.email}`);
+
+    // Record login activity
+    await this.auditLogsService.logActivity({
+      userId: user.id,
+      action: "LOGIN",
+      module: "AUTH",
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+      loginTime: new Date(),
+    });
 
     // Return response
     return ResponseHelper.success(
@@ -405,7 +417,7 @@ export class AuthService {
     }
   }
 
-  async logout(token: string): Promise<ApiResponse<null>> {
+  async logout(token: string, req: any): Promise<ApiResponse<null>> {
     // Find and delete token record
     const tokenRecord = await this.tokenRepository.findOne({
       where: { token },
@@ -419,6 +431,18 @@ export class AuthService {
       this.logger.log(
         `User logged out: ${tokenRecord.user?.email || "unknown"}`
       );
+
+      // Record logout activity
+      if (tokenRecord.user) {
+        await this.auditLogsService.logActivity({
+          userId: tokenRecord.user.id,
+          action: "LOGOUT",
+          module: "AUTH",
+          ipAddress: req.ip,
+          userAgent: req.headers["user-agent"],
+          logoutTime: new Date(),
+        });
+      }
     }
 
     return ResponseHelper.success(

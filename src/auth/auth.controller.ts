@@ -51,8 +51,8 @@ export class AuthController {
   @ApiResponse({ status: 429, description: "Too many requests" })
   @ApiBody({ type: LoginDto })
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 login attempts per minute
-  async login(@Body(ValidationPipe) loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  async login(@Request() req: any, @Body(ValidationPipe) loginDto: LoginDto) {
+    return this.authService.login(loginDto, req);
   }
 
   @Post("refresh")
@@ -99,7 +99,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async logout(@Request() req) {
     const token = req.headers.authorization?.split(" ")[1];
-    return this.authService.logout(token);
+    return this.authService.logout(token, req);
   }
 
   @Put("profile")

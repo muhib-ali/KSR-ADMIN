@@ -212,6 +212,12 @@ async function seed() {
         slug: "dashboard",
         description: "Dashboard analytics",
         is_active: true,
+      },
+      {
+        title: "Audit Logs",
+        slug: "audit-logs",
+        description: "View system-wide activity logs",
+        is_active: true,
       }
     ];
 
@@ -226,6 +232,8 @@ async function seed() {
         console.log(`Module already exists: ${moduleData.title}`);
       }
     }
+
+    
 
     // 3) PERMISSIONS
     console.log("Seeding permissions...");
@@ -381,6 +389,11 @@ async function seed() {
           !permDef.description.includes("variant type")
         ) {
           continue; // Only allow variant-type specific permissions for variant-types module
+        }
+
+        // For audit-logs module, only allow 'getAll' permission
+        if (module.slug === "audit-logs" && permDef.slug !== "getAll") {
+          continue;
         }
 
         const permissionData = {

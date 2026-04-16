@@ -4,7 +4,7 @@ import { CacheModule } from "@nestjs/cache-manager";
 import { ThrottlerModule } from "@nestjs/throttler";
 import { ConfigModule } from "@nestjs/config";
 import { TerminusModule } from "@nestjs/terminus";
-import { APP_FILTER, APP_GUARD } from "@nestjs/core";
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { DataSource } from "typeorm";
 import { redisStore } from "cache-manager-redis-yet";
 import { appDataSourceOptions } from "./config/database.config";
@@ -32,6 +32,8 @@ import { ReviewsModule } from "./reviews/reviews.module";
 import { BlogsModule } from "./blogs/blogs.module";
 import { CmsModule } from "./cms/cms.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
+import { AuditLogsModule } from "./audit-logs/audit-logs.module";
+import { AuditInterceptor } from "./audit-logs/interceptors/audit.interceptor";
 import { PermissionMiddleware } from "./middleware/permission.middleware";
 import { GlobalExceptionFilter } from "./filters/global-exception.filter";
 import { ThrottlerGuard } from "@nestjs/throttler";
@@ -137,6 +139,7 @@ import { OauthToken } from "./entities/oauth-token.entity";
     BlogsModule,
     CmsModule,
     DashboardModule,
+    AuditLogsModule,
   ],
   providers: [
     // Global exception filter
@@ -148,6 +151,11 @@ import { OauthToken } from "./entities/oauth-token.entity";
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    // Global activity tracking
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
     },
   ],
 })

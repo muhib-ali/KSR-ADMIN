@@ -14,9 +14,11 @@ import { Permission } from "../entities/permission.entity";
 import { Module as ModuleEntity } from "../entities/module.entity";
 import { AppConfigService } from "../config/config.service";
 import { CacheService } from "../cache/cache.service";
+import { AuditLogsModule } from "../audit-logs/audit-logs.module";
 
 @Module({
   imports: [
+    AuditLogsModule, // Added for tracking login/logout activity
     TypeOrmModule.forFeature([
       User,
       OauthToken,
